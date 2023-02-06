@@ -4,7 +4,7 @@ A rust implementation of the Fast programming language.
 
 ## Philosophy
 
-- A smaller language is an easier language. Easier language is faster to program correctly. The faster you can program something correctly, the faster one can iterate to make the algorithms faster.
+A smaller language is an easier language. Easier language is faster to program correctly. The faster you can program something correctly, the faster one can iterate to make the algorithms faster.
 
 ## Features
 
