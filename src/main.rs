@@ -139,8 +139,9 @@ fn parse_id(s: Input) -> IResult<Input, Span> {
     span(p).parse(s)
 }
 
-/// name = id
+/// name = !('case' | 'of' | 'end') id
 fn parse_name(s: Input) -> IResult<Input, Expr> {
+    let (s, _) = not(alt((tag("case"), tag("of"), tag("end"))))(s)?;
     parse_id.map(Expr::Name).parse(s)
 }
 
