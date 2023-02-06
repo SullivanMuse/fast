@@ -21,3 +21,7 @@ A smaller language is an easier language. Easier language is faster to program c
     - Bind `x`
     - Bind equal `x=(1, 2, 3)`
     - Tag `:atom`
+
+## Todo
+
+- Write parser tests
