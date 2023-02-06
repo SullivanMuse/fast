@@ -2,7 +2,7 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::{alpha1, space0, alphanumeric1, digit1},
-    combinator::{opt, success},
+    combinator::{not, opt, success},
     IResult,
     multi::{many0, many1, separated_list0},
     Parser,
@@ -199,6 +199,53 @@ fn input() -> String {
     let mut s = String::new();
     std::io::stdin().read_line(&mut s).unwrap();
     s
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    macro_rules! assert_not_let {
+        ($p: pat = $e: expr) => {
+            if let $p = $e {
+                assert!(false);
+            }
+        };
+    }
+    
+    macro_rules! assert_let {
+        ($p: pat = $e: expr) => {
+            if let $p = $e {
+            } else { assert!(false); }
+        };
+    }
+
+    #[test]
+    fn test_parse_name() {
+        assert_let!(Ok((_, Expr::Name(_))) = parse_name("hello".into()));
+        assert_let!(Err(_) = parse_name("case".into()));
+    }
+
+    #[test]
+    fn test_parse_int() {
+        assert_let!(Ok((_, Expr::Int(_))) = parse_int("1234_5678".into()));
+        assert_let!(Err(_) = parse_int("Hello!".into()));
+    }
+
+    #[test]
+    fn test_parse_tag() {
+        assert_let!(Ok((_, Expr::Tag(_))) = parse_tag(":x".into()));
+    }
+
+    #[test]
+    fn test_parse_paren() {
+        assert_let!(Ok((_, Expr::Paren(_, _))) = parse_paren("(    ( ))".into()));
+    }
+
+    #[test]
+    fn test_parse_tuple() {
+        assert_let!(Ok((_, Expr::Tuple(_, _))) = parse_tuple("(1, 2, 3)".into()));
+    }
 }
 
 fn main() {
