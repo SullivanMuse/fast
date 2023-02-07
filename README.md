@@ -22,6 +22,49 @@ A smaller language is an easier language. Easier language is faster to program c
     - Bind equal `x=(1, 2, 3)`
     - Tag `:atom`
 
+## Grammar
+
+```
+int = digit+ ('_' digit+)*
+kw = 'case' | 'of' | 'do' | 'end'
+id = !kw alpha ('_' alnum)*
+tag = ':' id
+
+# Pattern
+pname = id
+ignore = '_' id                                     _hello
+pint = int                                          1234_5678
+ptag = tag                                          :x
+pellipsis = '..' id?
+pitem = patom | pellipsis
+ptuple = (pitem ',')+ pitem?                        x, ..middle, z
+pparen = '(' pattern ')'                            (x, y) (x)
+punit = '(' ')'                                     ()
+patom = pparen | punit | ptag | pint | pname | ignore      (x, y) () :x 1234 _hel
+pinner = !papp (ptuple | patom)                     error if f(x) because function pattern must not appear inside another pattern
+papp = patom ('(' pinner ')')*                      f(x)(y, z)
+pattern = papp | ptuple | patom                     f(x); x, y; ()
+
+# Expression
+eint = int                                          1234_5678
+etag = tag                                          :x
+name = id                                           x
+
+eellipsis = '..' eapp
+eitem = expr | eellipsis
+etuple = (eitem ',')+ eitem?                        x, ..f(x), y
+eparen = '(' expr ')'                               (x)
+eunit = '(' ')'                                     ()
+eatom = eparen | eunit | etag | eint | ename        (()) () :x 1234_5678 x
+eapp = eatom ('(' (eitem ',')+ eitem? ')')*         f(x, ..ys)(z)
+arm = 'of' pattern '=' expr
+case = 'case' expr arm* 'end'                       case x of x, y = x + y end
+assign = pattern '=' expr
+statement = (assign | expr) ';'
+do = 'do' statement* expr? 'end'
+expr = case | do | etuple | eapp
+```
+
 ## Todo
 
 - Write parser tests
