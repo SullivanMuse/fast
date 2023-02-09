@@ -1,4 +1,4 @@
-use crate::expr::{Input, Expr, Pattern, Arm, Ellipsis};
+use crate::expr::{Input, Expr, Pattern, Arm, Ellipsis, Statement};
 use crate::span::Span;
 
 use nom::{
@@ -220,6 +220,41 @@ fn ecase(s: Input) -> IResult<Input, Expr> {
     Ok((s1, Expr::Case { span, subject, arms }))
 }
 
+fn assign(s: Input) -> IResult<Input, Statement> {
+    let (s1, (pattern, expr)) = pair(
+        pattern,
+        preceded(
+            tuple((space0, tag("="), space0)),
+            expr,
+        ),
+    )(s)?;
+    let span = Span::between(s, s1);
+    Ok((s1, Statement::Assign { span, pattern, expr }))
+}
+
+fn statement(s: Input) -> IResult<Input, Statement> {
+    alt((
+        assign,
+        map(expr, Statement::Expr),
+    ))(s)
+}
+
+fn edo(s: Input) -> IResult<Input, Expr> {
+    let (s1, (statements, ret)) = delimited(
+        pair(tag("{"), space0),
+        pair(
+            many0(terminated(
+                statement,
+                tuple((space0, tag(";"), space0)),
+            )),
+            opt(map(expr, Box::new)),
+        ),
+        pair(space0, tag("}")),
+    )(s)?;
+    let span = Span::between(s, s1);
+    Ok((s1, Expr::Do { span, statements, ret }))
+}
+
 fn eparen(s: Input) -> IResult<Input, Expr> {
     let (s1, inner) = delimited(
         pair(
@@ -241,6 +276,7 @@ fn eother(s: Input) -> IResult<Input, Expr> {
     alt((
         eapp,
         ecase,
+        edo,
     ))(s)
 }
 

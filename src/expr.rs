@@ -16,6 +16,16 @@ pub(crate) struct Ellipsis<'a> {
 }
 
 #[derive(Debug, PartialEq)]
+pub(crate) enum Statement<'a> {
+    Expr(Expr<'a>),
+    Assign {
+        span: Input<'a>,
+        pattern: Pattern<'a>,
+        expr: Expr<'a>,
+    },
+}
+
+#[derive(Debug, PartialEq)]
 pub(crate) enum Expr<'a> {
     Int(Input<'a>),
     Tag(Input<'a>, Input<'a>),
@@ -34,6 +44,11 @@ pub(crate) enum Expr<'a> {
         arms: Vec<Arm<'a>>,
     },
     Paren(Input<'a>, Box<Expr<'a>>),
+    Do {
+        span: Input<'a>,
+        statements: Vec<Statement<'a>>,
+        ret: Option<Box<Expr<'a>>>,
+    },
 }
 
 #[derive(Debug, PartialEq)]
