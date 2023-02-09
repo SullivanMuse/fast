@@ -67,4 +67,7 @@ expr = case | do | etuple | eapp
 
 ## Todo
 
-- Write parser tests
+## Done
+
+- Write parser
+- Write tests for parser
