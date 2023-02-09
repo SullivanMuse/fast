@@ -51,6 +51,7 @@ impl<T> Span<T> {
         Self { inner, start, end }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn end(inner: T) -> Self
     where
         T: InputLength,
