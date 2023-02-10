@@ -7,7 +7,7 @@ use nom::{
     character::complete::{digit1, space0, alpha1, alphanumeric1},
     combinator::{cut, not, value, map, opt},
     IResult,
-    multi::{many0, many1},
+    multi::{many0, many1, separated_list0},
     sequence::{pair, tuple, preceded, delimited, terminated},
 };
 
@@ -384,21 +384,7 @@ fn papp(s: Input) -> IResult<Input, Pattern> {
     fn args(s: Input) -> IResult<Input, (Input, Vec<Pattern>)> {
         let (s1, xs) = delimited(
             pair(tag("("), space0),
-            map(
-                pair(
-                    many0(terminated(
-                        pitem,
-                        tuple((space0, tag(","), space0)),
-                    )),
-                    opt(pitem),
-                ),
-                |(mut xs, x)| {
-                    if let Some(x) = x {
-                        xs.push(x);
-                    }
-                    xs
-                },
-            ),
+            separated_list0(tuple((space0, tag(","), space0)), pitem),
             pair(space0, tag(")")),
         )(s)?;
         let span = Span::between(s, s1);
