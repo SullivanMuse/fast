@@ -1,3 +1,4 @@
+mod eval;
 mod expr;
 mod parse;
 mod span;
