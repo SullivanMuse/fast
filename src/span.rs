@@ -1,24 +1,8 @@
-use std::ops::{
-    Range,
-    RangeFrom,
-    RangeTo,
-    RangeFull,
-};
 use nom::{
-    Compare,
-    Err,
-    InputIter,
-    InputLength,
-    InputTake,
-    InputTakeAtPosition,
-    IResult,
-    error::{
-        ErrorKind,
-        ParseError,
-    },
-    Offset,
-    Slice,
+    error::{ErrorKind, ParseError},
+    Compare, Err, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, Slice,
 };
+use std::ops::{Range, RangeFrom, RangeFull, RangeTo};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Span<T> {
@@ -41,9 +25,7 @@ where
     T: std::fmt::Debug + Slice<Range<usize>>,
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fmt.debug_tuple("Span")
-           .field(&self.as_inner())
-           .finish()
+        fmt.debug_tuple("Span").field(&self.as_inner()).finish()
     }
 }
 
@@ -65,7 +47,7 @@ impl<T> Span<T> {
     where
         T: Slice<Range<usize>>,
     {
-        self.inner.slice(self.start .. self.end)
+        self.inner.slice(self.start..self.end)
     }
 
     pub(crate) fn between(first: Span<T>, second: Span<T>) -> Self
@@ -168,9 +150,13 @@ where
 {
     type Item = <T as InputIter>::Item;
 
-    fn split_at_position<P, E: nom::error::ParseError<Self>>(&self, predicate: P) -> IResult<Self, Self, E>
-      where
-        P: Fn(Self::Item) -> bool {
+    fn split_at_position<P, E: nom::error::ParseError<Self>>(
+        &self,
+        predicate: P,
+    ) -> IResult<Self, Self, E>
+    where
+        P: Fn(Self::Item) -> bool,
+    {
         match self.as_inner().position(predicate) {
             None => Err(Err::Incomplete(nom::Needed::new(1))),
             Some(n) => Ok(self.take_split(n)),
@@ -278,11 +264,7 @@ impl<T> Offset for Span<T> {
 mod test {
     use super::*;
     use nom::{
-        bytes::complete::tag,
-        branch::alt,
-        character::complete::alpha1,
-        IResult,
-        sequence::pair,
+        branch::alt, bytes::complete::tag, character::complete::alpha1, sequence::pair, IResult,
     };
 
     #[test]
@@ -294,10 +276,7 @@ mod test {
             tag("hello")(s)
         }
 
-        assert_eq!(
-            hello(span),
-            Ok((Span::new(s, 5, 5), Span::new(s, 0, 5))),
-        );
+        assert_eq!(hello(span), Ok((Span::new(s, 5, 5), Span::new(s, 0, 5))),);
     }
 
     #[test]
@@ -309,10 +288,7 @@ mod test {
             alpha1(s)
         }
 
-        assert_eq!(
-            id(span),
-            Ok((Span::new(s, 5, 5), Span::new(s, 0, 5))),
-        );
+        assert_eq!(id(span), Ok((Span::new(s, 5, 5), Span::new(s, 0, 5))),);
     }
 
     #[test]
@@ -324,10 +300,7 @@ mod test {
             alt((tag("thing"), alpha1))(s)
         }
 
-        assert_eq!(
-            parse(span),
-            Ok((Span::new(s, 5, 5), Span::new(s, 0, 5))),
-        );
+        assert_eq!(parse(span), Ok((Span::new(s, 5, 5), Span::new(s, 0, 5))),);
     }
 
     #[test]

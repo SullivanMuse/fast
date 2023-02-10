@@ -1,117 +1,63 @@
-use crate::expr::{Input, Expr, Pattern, Arm, Ellipsis, Statement};
+use crate::expr::{Arm, Ellipsis, Expr, Input, Pattern, Statement};
 use crate::span::Span;
 
 use nom::{
-    bytes::complete::tag,
     branch::alt,
-    character::complete::{digit1, space0, alpha1, alphanumeric1},
-    combinator::{cut, not, value, map, opt},
-    IResult,
+    bytes::complete::tag,
+    character::complete::{alpha1, alphanumeric1, digit1, space0},
+    combinator::{cut, map, not, opt, value},
     multi::{many0, many1, separated_list0},
-    sequence::{pair, tuple, preceded, delimited, terminated},
+    sequence::{delimited, pair, preceded, terminated, tuple},
+    IResult,
 };
 
 fn parse_int(s: Input) -> IResult<Input, Input> {
     let (s1, _) = tuple((
         digit1,
-        many0(
-            pair(
-                tag("_"),
-                digit1,
-            )
-        ),
-        cut(
-            not(
-                pair(
-                    space0,
-                    tag("_"),
-                )
-            )
-        ),
+        many0(pair(tag("_"), digit1)),
+        cut(not(pair(space0, tag("_")))),
     ))(s)?;
     Ok((s1, Span::between(s, s1)))
 }
 
 fn parse_kw(s: Input) -> IResult<Input, ()> {
-    value((), alt((
-        tag("case"),
-        tag("of"),
-        tag("do"),
-        tag("end"),
-    )))(s)
+    value((), alt((tag("case"), tag("of"), tag("do"), tag("end"))))(s)
 }
 
 fn parse_id(s: Input) -> IResult<Input, Input> {
-    let (s1, _) = tuple((
-        not(parse_kw),
-        alpha1,
-        many0(pair(tag("_"), alphanumeric1)),
-    ))(s)?;
+    let (s1, _) = tuple((not(parse_kw), alpha1, many0(pair(tag("_"), alphanumeric1))))(s)?;
     Ok((s1, Span::between(s, s1)))
 }
 
 fn parse_tag(s: Input) -> IResult<Input, (Input, Input)> {
-    let (s1, span) = preceded(
-        pair(
-            tag(":"),
-            space0,
-        ),
-        parse_id,
-    )(s)?;
+    let (s1, span) = preceded(pair(tag(":"), space0), parse_id)(s)?;
     Ok((s1, (Span::between(s, s1), span)))
 }
 
 fn eint(s: Input) -> IResult<Input, Expr> {
-    map(
-        parse_int,
-        Expr::Int,
-    )(s)
+    map(parse_int, Expr::Int)(s)
 }
 
 fn etag(s: Input) -> IResult<Input, Expr> {
-    map(
-        parse_tag,
-        |(span1, span2)| Expr::Tag(span1, span2),
-    )(s)
+    map(parse_tag, |(span1, span2)| Expr::Tag(span1, span2))(s)
 }
 
 fn eid(s: Input) -> IResult<Input, Expr> {
-    map(
-        parse_id,
-        Expr::Id,
-    )(s)
+    map(parse_id, Expr::Id)(s)
 }
 
 fn eatom(s: Input) -> IResult<Input, Expr> {
-    alt((
-        eunit,
-        eid,
-        etag,
-        eint,
-        eparen,
-    ))(s)
+    alt((eunit, eid, etag, eint, eparen))(s)
 }
 
 fn parse_ellipsis(s: Input) -> IResult<Input, Ellipsis> {
-    let (s1, id) = preceded(
-        tag(".."),
-        preceded(
-            space0,
-            opt(parse_id),
-        ),
-    )(s)?;
+    let (s1, id) = preceded(tag(".."), preceded(space0, opt(parse_id)))(s)?;
     let span = Span::between(s, s1);
     Ok((s1, Ellipsis { span, id }))
 }
 
 fn eitem(s: Input) -> IResult<Input, Expr> {
-    alt((
-        map(
-            parse_ellipsis,
-            Expr::Expand,
-        ),
-        eother,
-    ))(s)
+    alt((map(parse_ellipsis, Expr::Expand), eother))(s)
 }
 
 fn eapp(s: Input) -> IResult<Input, Expr> {
@@ -121,10 +67,7 @@ fn eapp(s: Input) -> IResult<Input, Expr> {
             pair(tag("("), space0),
             map(
                 pair(
-                    many0(terminated(
-                        eitem,
-                        tuple((space0, tag(","), space0)),
-                    )),
+                    many0(terminated(eitem, tuple((space0, tag(","), space0)))),
                     opt(eitem),
                 ),
                 |(mut xs, x)| {
@@ -139,11 +82,8 @@ fn eapp(s: Input) -> IResult<Input, Expr> {
         let span = Span::between(s, s1);
         Ok((s1, (span, args)))
     }
-    
-    let (s1, (mut f, xs)) = pair(
-        eatom,
-        many0(preceded(space0, args)),
-    )(s)?;
+
+    let (s1, (mut f, xs)) = pair(eatom, many0(preceded(space0, args)))(s)?;
     for (arg_span, args) in xs {
         let span = Span::to(s, arg_span);
         let inner = Box::new(f);
@@ -159,21 +99,14 @@ fn eapp(s: Input) -> IResult<Input, Expr> {
 
 /// eunit = '(' ')'
 fn eunit(s: Input) -> IResult<Input, Expr> {
-    let (s1, _) = tuple((
-        tag("("),
-        space0,
-        tag(")"),
-    ))(s)?;
+    let (s1, _) = tuple((tag("("), space0, tag(")")))(s)?;
     Ok((s1, Expr::Tuple(Span::between(s, s1), vec![])))
 }
 
 /// etuple = (eitem ',')+ eitem?
 fn etuple(s: Input) -> IResult<Input, Expr> {
     let (s1, (mut xs, x)) = pair(
-        many1(terminated(
-            eitem,
-            tuple((space0, tag(","), space0)),
-        )),
+        many1(terminated(eitem, tuple((space0, tag(","), space0)))),
         opt(preceded(space0, eitem)),
     )(s)?;
     if let Some(x) = x {
@@ -185,134 +118,104 @@ fn etuple(s: Input) -> IResult<Input, Expr> {
 
 fn arm(s: Input) -> IResult<Input, Arm> {
     let (s1, (pattern, expr)) = pair(
-        preceded(
-            terminated(tag("of"), space0),
-            pattern,
-        ),
-        preceded(
-            tuple((space0, tag("="), space0)),
-            expr,
-        ),
+        preceded(terminated(tag("of"), space0), pattern),
+        preceded(tuple((space0, tag("="), space0)), expr),
     )(s)?;
     let span = Span::between(s, s1);
-    Ok((s1, Arm { span, pattern, expr }))
+    Ok((
+        s1,
+        Arm {
+            span,
+            pattern,
+            expr,
+        },
+    ))
 }
 
 fn ecase(s: Input) -> IResult<Input, Expr> {
     let (s1, (subject, arms)) = pair(
-        preceded(
-            pair(
-                tag("case"),
-                space0,
-            ),
-            expr,
-        ),
-        terminated(
-            many0(preceded(
-                space0,
-                arm,
-            )),
-            pair(space0, tag("end")),
-        ),
+        preceded(pair(tag("case"), space0), expr),
+        terminated(many0(preceded(space0, arm)), pair(space0, tag("end"))),
     )(s)?;
     let span = Span::between(s, s1);
     let subject = Box::new(subject);
-    Ok((s1, Expr::Case { span, subject, arms }))
+    Ok((
+        s1,
+        Expr::Case {
+            span,
+            subject,
+            arms,
+        },
+    ))
 }
 
 fn assign(s: Input) -> IResult<Input, Statement> {
-    let (s1, (pattern, expr)) = pair(
-        pattern,
-        preceded(
-            tuple((space0, tag("="), space0)),
-            expr,
-        ),
-    )(s)?;
+    let (s1, (pattern, expr)) =
+        pair(pattern, preceded(tuple((space0, tag("="), space0)), expr))(s)?;
     let span = Span::between(s, s1);
-    Ok((s1, Statement::Assign { span, pattern, expr }))
+    Ok((
+        s1,
+        Statement::Assign {
+            span,
+            pattern,
+            expr,
+        },
+    ))
 }
 
 fn statement(s: Input) -> IResult<Input, Statement> {
-    alt((
-        assign,
-        map(expr, Statement::Expr),
-    ))(s)
+    alt((assign, map(expr, Statement::Expr)))(s)
 }
 
 fn edo(s: Input) -> IResult<Input, Expr> {
     let (s1, (statements, ret)) = delimited(
         pair(tag("{"), space0),
         pair(
-            many0(terminated(
-                statement,
-                tuple((space0, tag(";"), space0)),
-            )),
+            many0(terminated(statement, tuple((space0, tag(";"), space0)))),
             opt(map(expr, Box::new)),
         ),
         pair(space0, tag("}")),
     )(s)?;
     let span = Span::between(s, s1);
-    Ok((s1, Expr::Do { span, statements, ret }))
+    Ok((
+        s1,
+        Expr::Do {
+            span,
+            statements,
+            ret,
+        },
+    ))
 }
 
 fn eparen(s: Input) -> IResult<Input, Expr> {
-    let (s1, inner) = delimited(
-        pair(
-            tag("("),
-            space0,
-        ),
-        expr,
-        pair(
-            space0,
-            tag(")"),
-        ),
-    )(s)?;
+    let (s1, inner) = delimited(pair(tag("("), space0), expr, pair(space0, tag(")")))(s)?;
     let span = Span::between(s, s1);
     let expr = Expr::Paren(span, Box::new(inner));
     Ok((s1, expr))
 }
 
 fn eother(s: Input) -> IResult<Input, Expr> {
-    alt((
-        eapp,
-        ecase,
-        edo,
-    ))(s)
+    alt((eapp, ecase, edo))(s)
 }
 
 pub(crate) fn expr(s: Input) -> IResult<Input, Expr> {
-    alt((
-        etuple,
-        eother,
-    ))(s)
+    alt((etuple, eother))(s)
 }
 
 fn pint(s: Input) -> IResult<Input, Pattern> {
-    map(
-        parse_int,
-        Pattern::Int,
-    )(s)
+    map(parse_int, Pattern::Int)(s)
 }
 
 fn pid(s: Input) -> IResult<Input, Pattern> {
-    map(
-        parse_id,
-        Pattern::Id,
-    )(s)
+    map(parse_id, Pattern::Id)(s)
 }
 
 fn ptag(s: Input) -> IResult<Input, Pattern> {
-    map(
-        parse_tag,
-        |(span1, span2)| Pattern::Tag(span1, span2),
-    )(s)
+    map(parse_tag, |(span1, span2)| Pattern::Tag(span1, span2))(s)
 }
 
 fn pignore(s: Input) -> IResult<Input, Pattern> {
-    let (s1, _) = pair(
-        tag("_"),
-        opt(parse_id),
-    )(s)?;
+    let (s1, _) = pair(tag("_"), opt(parse_id))(s)?;
     let span = Span::between(s, s1);
     let pat = Pattern::Ignore(span);
     Ok((s1, pat))
@@ -326,46 +229,24 @@ fn punit(s: Input) -> IResult<Input, Pattern> {
 }
 
 fn pparen(s: Input) -> IResult<Input, Pattern> {
-    let (s1, inner) = delimited(
-        pair(tag("("), space0),
-        pattern,
-        pair(space0, tag(")")),
-    )(s)?;
+    let (s1, inner) = delimited(pair(tag("("), space0), pattern, pair(space0, tag(")")))(s)?;
     let span = Span::between(s, s1);
     let pat = Pattern::Paren(span, Box::new(inner));
     Ok((s1, pat))
 }
 
 fn patom(s: Input) -> IResult<Input, Pattern> {
-    alt((
-        pint,
-        pid,
-        ptag,
-        pignore,
-        punit,
-        pparen,
-    ))(s)
+    alt((pint, pid, ptag, pignore, punit, pparen))(s)
 }
 
 fn pitem(s: Input) -> IResult<Input, Pattern> {
-    alt((
-        map(
-            parse_ellipsis,
-            Pattern::Collect,
-        ),
-        pother,
-    ))(s)
+    alt((map(parse_ellipsis, Pattern::Collect), pother))(s)
 }
 
 fn ptuple(s: Input) -> IResult<Input, Pattern> {
     let (s1, xs) = map(
         pair(
-            many1(
-                terminated(
-                    pitem,
-                    tuple((space0, tag(","), space0)),
-                )
-            ),
+            many1(terminated(pitem, tuple((space0, tag(","), space0)))),
             opt(pitem),
         ),
         |(mut xs, x)| {
@@ -390,10 +271,7 @@ fn papp(s: Input) -> IResult<Input, Pattern> {
         let span = Span::between(s, s1);
         Ok((s1, (span, xs)))
     }
-    let (s1, (mut f, xs)) = pair(
-        patom,
-        many0(args),
-    )(s)?;
+    let (s1, (mut f, xs)) = pair(patom, many0(args))(s)?;
     for (arg_span, args) in xs {
         let span = Span::to(s, arg_span);
         let inner = Box::new(f);
@@ -408,9 +286,7 @@ fn papp(s: Input) -> IResult<Input, Pattern> {
 }
 
 fn pother(s: Input) -> IResult<Input, Pattern> {
-    alt((
-        papp,
-    ))(s)
+    alt((papp,))(s)
 }
 
 fn pattern(s: Input) -> IResult<Input, Pattern> {
@@ -467,7 +343,10 @@ mod test {
         let span = Span::from(s);
         assert_eq!(
             etag(span),
-            Ok((Span::new(s, s.len(), s.len()), Expr::Tag(span, Span::new(s, 2, s.len())))),
+            Ok((
+                Span::new(s, s.len(), s.len()),
+                Expr::Tag(span, Span::new(s, 2, s.len()))
+            )),
         );
 
         let s = " : xyz";
@@ -488,16 +367,8 @@ mod test {
     fn test_eparen() {
         let s = "(  1234)";
         let span = Span::from(s);
-        let expr = Expr::Paren(
-            span,
-            Box::new(Expr::Int(
-                Span::new(s, 3, 7)
-            ))
-        );
-        assert_eq!(
-            eparen(span),
-            Ok((Span::new(s, s.len(), s.len()), expr)),
-        );
+        let expr = Expr::Paren(span, Box::new(Expr::Int(Span::new(s, 3, 7))));
+        assert_eq!(eparen(span), Ok((Span::new(s, s.len(), s.len()), expr)),);
 
         assert_err!(eparen(Span::from("  (  1234)")));
     }
@@ -516,15 +387,10 @@ mod test {
                         span: Span::new(s, 0, 7),
                         inner: Box::new(Expr::Id(Span::new(s, 0, 1))),
                         arg_span: Span::new(s, 1, 7),
-                        args: vec![
-                            Expr::Id(Span::new(s, 2, 3)),
-                            Expr::Id(Span::new(s, 5, 6)),
-                        ],
+                        args: vec![Expr::Id(Span::new(s, 2, 3)), Expr::Id(Span::new(s, 5, 6)),],
                     }),
                     arg_span: Span::new(s, 7, 10),
-                    args: vec![
-                        Expr::Id(Span::new(s, 8, 9)),
-                    ],
+                    args: vec![Expr::Id(Span::new(s, 8, 9)),],
                 },
             )),
         );
@@ -534,10 +400,7 @@ mod test {
     fn test_eatom() {
         let s = "1234";
         let expr = Expr::Int(Span::from(s));
-        assert_eq!(
-            eatom(Span::from(s)),
-            Ok((Span::end(s), expr)),
-        );
+        assert_eq!(eatom(Span::from(s)), Ok((Span::end(s), expr)),);
     }
 
     #[test]
@@ -550,13 +413,11 @@ mod test {
                 Expr::Case {
                     span: Span::new(s, 0, 19),
                     subject: Box::new(Expr::Id(Span::new(s, 5, 6))),
-                    arms: vec![
-                        Arm {
-                            span: Span::new(s, 7, 15),
-                            pattern: Pattern::Id(Span::new(s, 10, 11)),
-                            expr: Expr::Id(Span::new(s, 14, 15)),
-                        },
-                    ],
+                    arms: vec![Arm {
+                        span: Span::new(s, 7, 15),
+                        pattern: Pattern::Id(Span::new(s, 10, 11)),
+                        expr: Expr::Id(Span::new(s, 14, 15)),
+                    },],
                 },
             )),
         );
@@ -567,10 +428,7 @@ mod test {
         let s = "1234";
         let span = Span::from(s);
         let pat = Pattern::Int(span);
-        assert_eq!(
-            pint(span),
-            Ok((Span::end(s), pat)),
-        );
+        assert_eq!(pint(span), Ok((Span::end(s), pat)),);
     }
 
     #[test]
@@ -578,10 +436,7 @@ mod test {
         let s = ": xyz";
         let span = Span::from(s);
         let pat = Pattern::Tag(span, Span::new(s, 2, 5));
-        assert_eq!(
-            ptag(span),
-            Ok((Span::end(s), pat)),
-        );
+        assert_eq!(ptag(span), Ok((Span::end(s), pat)),);
     }
 
     #[test]
@@ -589,10 +444,7 @@ mod test {
         let s = "_xyz";
         let span = Span::from(s);
         let pat = Pattern::Ignore(span);
-        assert_eq!(
-            pignore(span),
-            Ok((Span::end(s), pat)),
-        );
+        assert_eq!(pignore(span), Ok((Span::end(s), pat)),);
     }
 
     #[test]
@@ -600,10 +452,7 @@ mod test {
         let s = "(   )";
         let span = Span::from(s);
         let pat = Pattern::Tuple(span, vec![]);
-        assert_eq!(
-            punit(span),
-            Ok((Span::end(s), pat)),
-        );
+        assert_eq!(punit(span), Ok((Span::end(s), pat)),);
 
         assert_err!(punit(Span::from("   ()")));
     }
@@ -623,10 +472,7 @@ mod test {
                 Pattern::Id(Span::new(s, 7, 8)),
             ],
         );
-        assert_eq!(
-            ptuple(span),
-            Ok((Span::end(s), pat)),
-        );
+        assert_eq!(ptuple(span), Ok((Span::end(s), pat)),);
 
         let s = "x, ..y, z";
         let span = Span::from(s);
@@ -641,10 +487,7 @@ mod test {
                 Pattern::Id(Span::new(s, 8, 9)),
             ],
         );
-        assert_eq!(
-            ptuple(span),
-            Ok((Span::end(s), pat)),
-        );
+        assert_eq!(ptuple(span), Ok((Span::end(s), pat)),);
     }
 
     #[test]
@@ -653,15 +496,9 @@ mod test {
         let span = Span::from(s);
         let pat = Pattern::Paren(
             Span::from(s),
-            Box::new(Pattern::Tuple(
-                Span::new(s, 1, 3),
-                vec![],
-            )),
+            Box::new(Pattern::Tuple(Span::new(s, 1, 3), vec![])),
         );
-        assert_eq!(
-            pparen(span),
-            Ok((Span::end(s), pat)),
-        );
+        assert_eq!(pparen(span), Ok((Span::end(s), pat)),);
     }
 
     #[test]
@@ -684,9 +521,7 @@ mod test {
                         ],
                     }),
                     arg_span: Span::new(s, 7, 10),
-                    args: vec![
-                        Pattern::Id(Span::new(s, 8, 9)),
-                    ],
+                    args: vec![Pattern::Id(Span::new(s, 8, 9)),],
                 },
             )),
         );
