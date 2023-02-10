@@ -16,6 +16,7 @@ use nom::{
         ErrorKind,
         ParseError,
     },
+    Offset,
     Slice,
 };
 
@@ -264,6 +265,12 @@ where
 
     fn compare_no_case(&self, t: U) -> nom::CompareResult {
         self.as_inner().compare_no_case(t)
+    }
+}
+
+impl<T> Offset for Span<T> {
+    fn offset(&self, second: &Self) -> usize {
+        second.start.checked_sub(self.start).unwrap_or(0)
     }
 }
 
