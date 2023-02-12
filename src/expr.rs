@@ -49,6 +49,7 @@ pub(crate) enum Expr<'a> {
         statements: Vec<Statement<'a>>,
         ret: Option<Box<Expr<'a>>>,
     },
+    Fn(Input<'a>, Input<'a>, Box<Expr<'a>>),
 }
 
 #[derive(Debug, PartialEq)]

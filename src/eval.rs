@@ -1,27 +1,12 @@
-use crate::expr::{Ellipsis, Expr, Input};
-use std::collections::HashMap;
+use crate::{
+    env::{Env as Environment, EnvVec},
+    expr::{Ellipsis, Expr, Input},
+};
+
+type Env<'a> = EnvVec<String, Value<'a>>;
 
 #[derive(Clone, Debug)]
-struct Env<'a>(HashMap<&'a str, Value<'a>>);
-
-impl<'a> Env<'a> {
-    fn get(&mut self, span: Input<'a>) -> &Value<'a> {
-        if !self.0.contains_key(span.as_inner()) {
-            self.0.insert(span.as_inner(), Value::Uninit);
-        }
-        self.0.get(span.as_inner()).unwrap()
-    }
-
-    fn get_mut(&mut self, span: Input<'a>) -> &mut Value<'a> {
-        if !self.0.contains_key(span.as_inner()) {
-            self.0.insert(span.as_inner(), Value::Uninit);
-        }
-        self.0.get_mut(span.as_inner()).unwrap()
-    }
-}
-
-#[derive(Clone, Debug)]
-enum Value<'a> {
+pub(crate) enum Value<'a> {
     Uninit,
     Int(i64),
     Tag(&'a str),
@@ -33,14 +18,17 @@ enum Value<'a> {
     },
 }
 
-fn expand_list<'a>(exprs: &Vec<Expr<'a>>, env: &mut Env<'a>) -> Vec<Value<'a>> {
-    let mut xs = vec![];
+fn expand_list<'a>(exprs: &'a Vec<Expr<'a>>, env: &mut Env<'a>) -> Vec<Value<'a>> {
+    let mut xs = Vec::new();
     for elem in exprs {
         match elem {
-            Expr::Expand(Ellipsis { span, id }) => match env.get(id.unwrap()).clone() {
-                Value::Tuple(mut inner) => xs.append(&mut inner),
-                _ => panic!("Expand expression must evaluate to a tuple."),
-            },
+            Expr::Expand(Ellipsis { span: _, id }) => {
+                let key: &str = id.expect("Must have value to unpack.").as_inner();
+                match env.get(key).clone() {
+                    Value::Tuple(mut inner) => xs.append(&mut inner),
+                    _ => panic!("Expand expression must evaluate to a tuple."),
+                }
+            }
             elem => xs.push(elem.eval(env)),
         }
     }
@@ -48,19 +36,27 @@ fn expand_list<'a>(exprs: &Vec<Expr<'a>>, env: &mut Env<'a>) -> Vec<Value<'a>> {
 }
 
 impl<'a> Expr<'a> {
-    fn eval(&self, env: &mut Env<'a>) -> Value<'a> {
+    pub(crate) fn eval_new(&'a self) -> Value<'a> {
+        let mut env = Env::new();
+        self.eval(&mut env)
+    }
+
+    fn eval(&'a self, env: &mut Env<'a>) -> Value<'a> {
         match self {
             Self::Int(span) => Value::Int(span.as_inner().parse::<i64>().unwrap()),
-            Self::Id(span) => env.get(*span).clone(),
+
+            Self::Id(span) => env.get(span.as_inner()).clone(),
+            
             Expr::Tag(_, span) => Value::Tag(span.as_inner()),
-            Expr::Expand(Ellipsis { span, id }) => {
-                panic!("Cannot have expand except inside tuple.")
-            }
+            
+            Expr::Expand(_) => panic!("Expand expressions must be inside tuples."),
+            
             Expr::Tuple(_, inner) => Value::Tuple(expand_list(inner, env)),
+            
             Expr::App {
-                span,
+                span: _,
                 inner,
-                arg_span,
+                arg_span: _,
                 args,
             } => match inner.eval(env) {
                 Value::Closure {
@@ -70,22 +66,35 @@ impl<'a> Expr<'a> {
                 } => {
                     let args = expand_list(args, env);
                     assert!(params.len() == args.len(), "Params must match args.");
-                    // Bind all of the arguments
-                    todo!()
+                    let mut env = env.clone();
+                    for (param, arg) in params.into_iter().zip(args) {
+                        env.insert(param.as_inner().to_string(), arg);
+                    }
+                    body.eval(&mut env)
                 }
                 _ => panic!("Callee must evaluate to a closure."),
             },
+            
             Expr::Case {
                 span,
                 subject,
                 arms,
             } => todo!(),
-            Expr::Paren(_, _) => todo!(),
+            
+            Expr::Paren(_, inner) => inner.eval(env),
+            
             Expr::Do {
                 span,
                 statements,
                 ret,
             } => todo!(),
+
+            Expr::Fn(_, param, inner) => {
+                let env = env.clone();
+                let params = vec![*param];
+                let body = &inner;
+                Value::Closure { env, params, body }
+            },
         }
     }
 }

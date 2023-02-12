@@ -1,6 +1,7 @@
 use crate::expr::{Arm, Ellipsis, Expr, Input, Pattern, Statement};
 use crate::span::Span;
 
+use nom::combinator::consumed;
 use nom::{
     branch::alt,
     bytes::complete::tag,
@@ -194,12 +195,26 @@ fn eparen(s: Input) -> IResult<Input, Expr> {
     Ok((s1, expr))
 }
 
+/// fn = param fn | param ws '->' ws expr
+fn efn(s: Input) -> IResult<Input, Expr> {
+    map(
+        consumed(alt((
+            pair(parse_id, preceded(space0, map(efn, Box::new))),
+            pair(
+                parse_id,
+                preceded(tuple((space0, tag("->"), space0)), map(expr, Box::new)),
+            ),
+        ))),
+        |(span, (param, body))| Expr::Fn(span, param, body),
+    )(s)
+}
+
 fn eother(s: Input) -> IResult<Input, Expr> {
     alt((eapp, ecase, edo))(s)
 }
 
 pub(crate) fn expr(s: Input) -> IResult<Input, Expr> {
-    alt((etuple, eother))(s)
+    alt((efn, etuple, eother))(s)
 }
 
 fn pint(s: Input) -> IResult<Input, Pattern> {
@@ -371,6 +386,37 @@ mod test {
         assert_eq!(eparen(span), Ok((Span::new(s, s.len(), s.len()), expr)),);
 
         assert_err!(eparen(Span::from("  (  1234)")));
+    }
+
+    #[test]
+    fn test_efn() {
+        let s = "x y z -> f(x, y)";
+        let span = Span::from(s);
+        let expr = Expr::Fn(
+            Span::from(s),
+            Span::new(s, 0, 1),
+            Box::new(Expr::Fn(
+                Span::new(s, 2, s.len()),
+                Span::new(s, 2, 3),
+                Box::new(Expr::Fn(
+                    Span::new(s, 4, s.len()),
+                    Span::new(s, 4, 5),
+                    Box::new(Expr::App {
+                        span: Span::new(s, 9, s.len()),
+                        inner: Box::new(Expr::Id(Span::new(s, 9, 10))),
+                        arg_span: Span::new(s, 10, s.len()),
+                        args: vec![
+                            Expr::Id(Span::new(s, 11, 12)),
+                            Expr::Id(Span::new(s, 14, 15)),
+                        ],
+                    }),
+                )),
+            )),
+        );
+        assert_eq!(
+            efn(span),
+            Ok((Span::end(s), expr)),
+        );
     }
 
     #[test]

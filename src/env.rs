@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 
 pub(crate) trait Env<K, V>: Clone {
-    fn insert(&self, key: K, value: V) -> Self;
+    fn insert(&mut self, key: K, value: V);
     fn get<Q>(&self, key: &Q) -> &V
     where
         Q: ?Sized,
@@ -12,11 +12,18 @@ pub(crate) trait Env<K, V>: Clone {
         K: Borrow<Q> + PartialEq<Q>;
 }
 
-impl<K: Clone, V: Clone> Env<K, V> for Vec<(K, V)> {
-    fn insert(&self, key: K, value: V) -> Self {
-        let mut out = self.clone();
-        out.push((key, value));
-        out
+#[derive(Clone, Debug)]
+pub(crate) struct EnvVec<K, V>(Vec<(K, V)>);
+
+impl<K, V> EnvVec<K, V> {
+    pub(crate) fn new() -> Self {
+        Self(Vec::new())
+    }
+}
+
+impl<K: Clone, V: Clone> Env<K, V> for EnvVec<K, V> {
+    fn insert(&mut self, key: K, value: V) {
+        self.0.push((key, value));
     }
 
     fn get<Q>(&self, key: &Q) -> &V
@@ -24,7 +31,9 @@ impl<K: Clone, V: Clone> Env<K, V> for Vec<(K, V)> {
         Q: ?Sized,
         K: Borrow<Q> + PartialEq<Q>,
     {
-        self.iter()
+        self.0
+            .iter()
+            .rev()
             .find(|(k, _)| k == key)
             .map(|(_, v)| v)
             .expect("Attempt to access undeclared variable.")
@@ -35,7 +44,9 @@ impl<K: Clone, V: Clone> Env<K, V> for Vec<(K, V)> {
         Q: ?Sized,
         K: Borrow<Q> + PartialEq<Q>,
     {
-        self.iter_mut()
+        self.0
+            .iter_mut()
+            .rev()
             .find(|(k, _)| k == key)
             .map(|(_, v)| v)
             .expect("Attempt to access undeclared variable.")
@@ -49,20 +60,21 @@ mod test {
     #[test]
     #[should_panic]
     fn test_env() {
-        let env = Vec::<(String, isize)>::new();
+        let env = EnvVec::<String, usize>::new();
         env.get("Hello");
     }
 
     #[test]
     fn test_get() {
-        let env = Vec::new();
-        let env = env.insert("x".to_string(), 1);
+        let mut env = EnvVec::<String, usize>::new();
+        env.insert("x".to_string(), 1);
         assert_eq!(*env.get("x"), 1);
     }
 
     #[test]
     fn test1() {
-        let mut env = Vec::new().insert("x".to_string(), 1);
+        let mut env = EnvVec::new();
+        env.insert("x".to_string(), 1);
         *env.get_mut("x") = 2;
         assert_eq!(*env.get("x"), 2);
     }

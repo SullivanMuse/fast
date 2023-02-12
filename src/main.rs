@@ -1,3 +1,4 @@
+mod env;
 mod eval;
 mod expr;
 mod parse;
@@ -15,6 +16,13 @@ fn main() {
     loop {
         let s = input();
         let span = s.as_str().into();
-        println!("{:?}", expr(span));
+        let expr = expr(span);
+        match expr {
+            Err(_) => (),
+            Ok((_, e)) => {
+                let value = e.eval_new();
+                println!("{:?}", value);
+            }
+        }
     }
 }
