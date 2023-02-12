@@ -46,13 +46,13 @@ impl<'a> Expr<'a> {
             Self::Int(span) => Value::Int(span.as_inner().parse::<i64>().unwrap()),
 
             Self::Id(span) => env.get(span.as_inner()).clone(),
-            
+
             Expr::Tag(_, span) => Value::Tag(span.as_inner()),
-            
+
             Expr::Expand(_) => panic!("Expand expressions must be inside tuples."),
-            
+
             Expr::Tuple(_, inner) => Value::Tuple(expand_list(inner, env)),
-            
+
             Expr::App {
                 span: _,
                 inner,
@@ -74,27 +74,23 @@ impl<'a> Expr<'a> {
                 }
                 _ => panic!("Callee must evaluate to a closure."),
             },
-            
+
             Expr::Case {
                 span,
                 subject,
                 arms,
             } => todo!(),
-            
+
             Expr::Paren(_, inner) => inner.eval(env),
-            
-            Expr::Do {
-                span,
-                statements,
-                ret,
-            } => todo!(),
+
+            Expr::Do { .. } => todo!(),
 
             Expr::Fn(_, param, inner) => {
                 let env = env.clone();
                 let params = vec![*param];
                 let body = &inner;
                 Value::Closure { env, params, body }
-            },
+            }
         }
     }
 }
