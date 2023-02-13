@@ -22,6 +22,10 @@ A smaller language is an easier language. Easier language is faster to program c
     - Bind equal `x=(1, 2, 3)`
     - Tag `:atom`
 
+## `Rc<RefCell<T>>` cheatsheet
+
+- `match` subjects should be used like `match *x.borrow_mut() { ... }`
+
 ## Grammar
 
 ```
