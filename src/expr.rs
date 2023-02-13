@@ -26,18 +26,21 @@ pub(crate) enum Statement<'a> {
 }
 
 #[derive(Debug, PartialEq)]
+pub(crate) struct App<'a> {
+    pub(crate) span: Input<'a>,
+    pub(crate) inner: Box<Expr<'a>>,
+    pub(crate) arg_span: Input<'a>,
+    pub(crate) args: Vec<Expr<'a>>,
+}
+
+#[derive(Debug, PartialEq)]
 pub(crate) enum Expr<'a> {
     Int(Input<'a>),
     Tag(Input<'a>, Input<'a>),
     Id(Input<'a>),
     Expand(Ellipsis<'a>),
     Tuple(Input<'a>, Vec<Expr<'a>>),
-    App {
-        span: Input<'a>,
-        inner: Box<Expr<'a>>,
-        arg_span: Input<'a>,
-        args: Vec<Expr<'a>>,
-    },
+    App(App<'a>),
     Case {
         span: Input<'a>,
         subject: Box<Expr<'a>>,

@@ -1,6 +1,6 @@
 use crate::{
     env::{Env as Environment, EnvVec},
-    expr::{Ellipsis, Expr, Input},
+    expr::{App, Ellipsis, Expr, Input},
 };
 
 type Env<'a> = EnvVec<String, Value<'a>>;
@@ -53,12 +53,12 @@ impl<'a> Expr<'a> {
 
             Expr::Tuple(_, inner) => Value::Tuple(expand_list(inner, env)),
 
-            Expr::App {
+            Expr::App(App {
                 span: _,
                 inner,
                 arg_span: _,
                 args,
-            } => match inner.eval(env) {
+            }) => match inner.eval(env) {
                 Value::Closure {
                     env: _,
                     params,

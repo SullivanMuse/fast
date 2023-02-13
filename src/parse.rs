@@ -1,4 +1,4 @@
-use crate::expr::{Arm, Ellipsis, Expr, Input, Pattern, Statement};
+use crate::expr::{Arm, App, Ellipsis, Expr, Input, Pattern, Statement};
 use crate::span::Span;
 
 use nom::combinator::consumed;
@@ -88,12 +88,12 @@ fn eapp(s: Input) -> IResult<Input, Expr> {
     for (arg_span, args) in xs {
         let span = Span::to(s, arg_span);
         let inner = Box::new(f);
-        f = Expr::App {
+        f = Expr::App(App {
             span,
             inner,
             arg_span,
             args,
-        };
+        });
     }
     Ok((s1, f))
 }
@@ -401,7 +401,7 @@ mod test {
                 Box::new(Expr::Fn(
                     Span::new(s, 4, s.len()),
                     Span::new(s, 4, 5),
-                    Box::new(Expr::App {
+                    Box::new(Expr::App(App {
                         span: Span::new(s, 9, s.len()),
                         inner: Box::new(Expr::Id(Span::new(s, 9, 10))),
                         arg_span: Span::new(s, 10, s.len()),
@@ -409,7 +409,7 @@ mod test {
                             Expr::Id(Span::new(s, 11, 12)),
                             Expr::Id(Span::new(s, 14, 15)),
                         ],
-                    }),
+                    })),
                 )),
             )),
         );
@@ -427,17 +427,17 @@ mod test {
             eapp(span),
             Ok((
                 Span::end(s),
-                Expr::App {
+                Expr::App(App {
                     span: Span::from(s),
-                    inner: Box::new(Expr::App {
+                    inner: Box::new(Expr::App(App {
                         span: Span::new(s, 0, 7),
                         inner: Box::new(Expr::Id(Span::new(s, 0, 1))),
                         arg_span: Span::new(s, 1, 7),
                         args: vec![Expr::Id(Span::new(s, 2, 3)), Expr::Id(Span::new(s, 5, 6)),],
-                    }),
+                    })),
                     arg_span: Span::new(s, 7, 10),
                     args: vec![Expr::Id(Span::new(s, 8, 9)),],
-                },
+                }),
             )),
         );
     }
