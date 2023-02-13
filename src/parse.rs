@@ -1,4 +1,4 @@
-use crate::expr::{App, Arm, Case, Ellipsis, Expr, Input, Pattern, Statement};
+use crate::expr::{App, Arm, Case, Do, Ellipsis, Expr, Input, Pattern, Statement};
 use crate::span::Span;
 
 use nom::combinator::consumed;
@@ -180,11 +180,11 @@ fn edo(s: Input) -> IResult<Input, Expr> {
     let span = Span::between(s, s1);
     Ok((
         s1,
-        Expr::Do {
+        Expr::Do(Do {
             span,
             statements,
             ret,
-        },
+        }),
     ))
 }
 
