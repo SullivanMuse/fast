@@ -1,4 +1,4 @@
-use crate::expr::{Arm, App, Ellipsis, Expr, Input, Pattern, Statement};
+use crate::expr::{App, Arm, Case, Ellipsis, Expr, Input, Pattern, Statement};
 use crate::span::Span;
 
 use nom::combinator::consumed;
@@ -142,11 +142,11 @@ fn ecase(s: Input) -> IResult<Input, Expr> {
     let subject = Box::new(subject);
     Ok((
         s1,
-        Expr::Case {
+        Expr::Case(Case {
             span,
             subject,
             arms,
-        },
+        }),
     ))
 }
 
@@ -413,10 +413,7 @@ mod test {
                 )),
             )),
         );
-        assert_eq!(
-            efn(span),
-            Ok((Span::end(s), expr)),
-        );
+        assert_eq!(efn(span), Ok((Span::end(s), expr)),);
     }
 
     #[test]
@@ -456,7 +453,7 @@ mod test {
             ecase(Span::from(s)),
             Ok((
                 Span::end(s),
-                Expr::Case {
+                Expr::Case(Case {
                     span: Span::new(s, 0, 19),
                     subject: Box::new(Expr::Id(Span::new(s, 5, 6))),
                     arms: vec![Arm {
@@ -464,7 +461,7 @@ mod test {
                         pattern: Pattern::Id(Span::new(s, 10, 11)),
                         expr: Expr::Id(Span::new(s, 14, 15)),
                     },],
-                },
+                }),
             )),
         );
     }

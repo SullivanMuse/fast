@@ -1,6 +1,6 @@
 use crate::{
     env::{Env as Environment, EnvVec},
-    expr::{App, Ellipsis, Expr, Input},
+    expr::{App, Case, Ellipsis, Expr, Input},
 };
 
 type Env<'a> = EnvVec<String, Value<'a>>;
@@ -75,11 +75,11 @@ impl<'a> Expr<'a> {
                 _ => panic!("Callee must evaluate to a closure."),
             },
 
-            Expr::Case {
+            Expr::Case(Case {
                 span,
                 subject,
                 arms,
-            } => todo!(),
+            }) => todo!(),
 
             Expr::Paren(_, inner) => inner.eval(env),
 

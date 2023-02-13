@@ -34,6 +34,13 @@ pub(crate) struct App<'a> {
 }
 
 #[derive(Debug, PartialEq)]
+pub(crate) struct Case<'a> {
+    pub(crate) span: Input<'a>,
+    pub(crate) subject: Box<Expr<'a>>,
+    pub(crate) arms: Vec<Arm<'a>>,
+}
+
+#[derive(Debug, PartialEq)]
 pub(crate) enum Expr<'a> {
     Int(Input<'a>),
     Tag(Input<'a>, Input<'a>),
@@ -41,11 +48,7 @@ pub(crate) enum Expr<'a> {
     Expand(Ellipsis<'a>),
     Tuple(Input<'a>, Vec<Expr<'a>>),
     App(App<'a>),
-    Case {
-        span: Input<'a>,
-        subject: Box<Expr<'a>>,
-        arms: Vec<Arm<'a>>,
-    },
+    Case(Case<'a>),
     Paren(Input<'a>, Box<Expr<'a>>),
     Do {
         span: Input<'a>,
