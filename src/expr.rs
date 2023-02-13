@@ -62,6 +62,14 @@ pub(crate) enum Expr<'a> {
 }
 
 #[derive(Debug, PartialEq)]
+pub(crate) struct PatternApp<'a> {
+    pub(crate) span: Input<'a>,
+    pub(crate) inner: Box<Pattern<'a>>,
+    pub(crate) arg_span: Input<'a>,
+    pub(crate) args: Vec<Pattern<'a>>,
+}
+
+#[derive(Debug, PartialEq)]
 pub(crate) enum Pattern<'a> {
     Id(Input<'a>),
     Ignore(Input<'a>),
@@ -69,11 +77,6 @@ pub(crate) enum Pattern<'a> {
     Tag(Input<'a>, Input<'a>),
     Collect(Ellipsis<'a>),
     Tuple(Input<'a>, Vec<Pattern<'a>>),
-    App {
-        span: Input<'a>,
-        inner: Box<Pattern<'a>>,
-        arg_span: Input<'a>,
-        args: Vec<Pattern<'a>>,
-    },
+    App(PatternApp<'a>),
     Paren(Input<'a>, Box<Pattern<'a>>),
 }

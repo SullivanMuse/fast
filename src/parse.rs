@@ -1,4 +1,4 @@
-use crate::expr::{App, Arm, Case, Do, Ellipsis, Expr, Input, Pattern, Statement};
+use crate::expr::{App, Arm, Case, Do, Ellipsis, Expr, Input, Pattern, Statement, PatternApp};
 use crate::span::Span;
 
 use nom::combinator::consumed;
@@ -290,12 +290,12 @@ fn papp(s: Input) -> IResult<Input, Pattern> {
     for (arg_span, args) in xs {
         let span = Span::to(s, arg_span);
         let inner = Box::new(f);
-        f = Pattern::App {
+        f = Pattern::App(PatternApp {
             span,
             inner,
             arg_span,
             args,
-        };
+        });
     }
     Ok((s1, f))
 }
@@ -552,9 +552,9 @@ mod test {
             papp(span),
             Ok((
                 Span::end(s),
-                Pattern::App {
+                Pattern::App(PatternApp {
                     span: Span::from(s),
-                    inner: Box::new(Pattern::App {
+                    inner: Box::new(Pattern::App(PatternApp {
                         span: Span::new(s, 0, 7),
                         inner: Box::new(Pattern::Id(Span::new(s, 0, 1))),
                         arg_span: Span::new(s, 1, 7),
@@ -562,10 +562,10 @@ mod test {
                             Pattern::Id(Span::new(s, 2, 3)),
                             Pattern::Id(Span::new(s, 5, 6)),
                         ],
-                    }),
+                    })),
                     arg_span: Span::new(s, 7, 10),
                     args: vec![Pattern::Id(Span::new(s, 8, 9)),],
-                },
+                }),
             )),
         );
     }
