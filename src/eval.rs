@@ -7,16 +7,19 @@ use std::{cell::RefCell, rc::Rc};
 type Env<'a> = EnvVec<String, ValuePtr<'a>>;
 
 #[derive(Clone, Debug)]
+pub(crate) struct Closure<'a> {
+    pub(crate) env: Env<'a>,
+    pub(crate) params: Vec<Input<'a>>,
+    pub(crate) body: &'a Expr<'a>,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) enum Value<'a> {
     Uninit,
     Int(i64),
     Tag(&'a str),
     Tuple(Vec<ValuePtr<'a>>),
-    Closure {
-        env: Env<'a>,
-        params: Vec<Input<'a>>,
-        body: &'a Expr<'a>,
-    },
+    Closure(Closure<'a>),
 }
 
 impl<'a> Value<'a> {
@@ -63,33 +66,23 @@ impl<'a> Expr<'a> {
 
             Expr::Tuple(_, inner) => Value::Tuple(expand_list(inner, env)).into_ptr(),
 
-            Expr::App(App {
-                span: _,
-                inner,
-                arg_span: _,
-                args,
-            }) => match *inner.eval(env).borrow() {
-                Value::Closure {
-                    env: _,
-                    ref params,
-                    body,
-                } => {
-                    let args = expand_list(args, env);
-                    assert!(params.len() == args.len(), "Params must match args.");
+            Expr::App(ref app) => match *app.inner.eval(env).borrow() {
+                Value::Closure(ref closure) => {
+                    let args = expand_list(&app.args, env);
+                    assert!(
+                        closure.params.len() == args.len(),
+                        "Params must match args."
+                    );
                     let mut env = env.clone();
-                    for (param, arg) in params.into_iter().zip(args) {
+                    for (param, arg) in closure.params.iter().zip(args) {
                         env.insert(param.as_inner().to_string(), arg);
                     }
-                    body.eval(&mut env)
+                    closure.body.eval(&mut env)
                 }
                 _ => panic!("Callee must evaluate to a closure."),
             },
 
-            Expr::Case(Case {
-                span,
-                subject,
-                arms,
-            }) => todo!(),
+            Expr::Case(_) => todo!(),
 
             Expr::Paren(_, inner) => inner.eval(env),
 
@@ -99,7 +92,7 @@ impl<'a> Expr<'a> {
                 let env = env.clone();
                 let params = vec![*param];
                 let body = &inner;
-                Value::Closure { env, params, body }.into_ptr()
+                Value::Closure(Closure { env, params, body }).into_ptr()
             }
         }
     }

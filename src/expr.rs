@@ -64,9 +64,9 @@ pub(crate) enum Expr<'a> {
 #[derive(Debug, PartialEq)]
 pub(crate) struct PatternApp<'a> {
     pub(crate) span: Input<'a>,
-    pub(crate) inner: Box<Pattern<'a>>,
+    pub(crate) f: Box<Pattern<'a>>,
     pub(crate) arg_span: Input<'a>,
-    pub(crate) args: Vec<Pattern<'a>>,
+    pub(crate) xs: Vec<Pattern<'a>>,
 }
 
 #[derive(Debug, PartialEq)]
