@@ -133,92 +133,65 @@ mod test {
     use super::*;
     use crate::expr;
 
+    macro_rules! evals_to {
+        ($s: expr, $v: expr) => {
+            if let Ok((_, x)) = expr($s.into()) {
+                assert_eq!(x.eval_new(), $v.into_ptr());
+            } else {
+                assert!(false);
+            }
+        };
+    }
+
     #[test]
     fn test_eval_int() {
-        if let Ok((_, x)) = expr("1234".into()) {
-            assert_eq!(x.eval_new(), Value::Int(1234).into_ptr());
-        } else {
-            assert!(false);
-        }
+        evals_to!("1234", Value::Int(1234));
     }
 
     #[test]
     fn test_eval_unit() {
-        if let Ok((_, x)) = expr("()".into()) {
-            assert_eq!(x.eval_new(), Value::Tuple(vec![]).into_ptr());
-        } else {
-            assert!(false);
-        }
+        evals_to!("()", Value::Tuple(vec![]));
     }
 
     #[test]
     fn test_eval_tuple() {
-        if let Ok((_, x)) = expr("(1, 2, 3)".into()) {
-            assert_eq!(
-                x.eval_new(),
-                Value::Tuple(vec![
-                    Value::Int(1).into_ptr(),
-                    Value::Int(2).into_ptr(),
-                    Value::Int(3).into_ptr()
-                ])
-                .into_ptr()
-            );
-        } else {
-            assert!(false);
-        }
+        evals_to!(
+            "(1, 2, 3)",
+            Value::Tuple(vec![
+                Value::Int(1).into_ptr(),
+                Value::Int(2).into_ptr(),
+                Value::Int(3).into_ptr()
+            ])
+        );
     }
 
     #[test]
     fn test_eval_tag() {
-        if let Ok((_, x)) = expr(":tag".into()) {
-            assert_eq!(x.eval_new(), Value::Tag("tag").into_ptr());
-        } else {
-            assert!(false);
-        }
+        evals_to!(":tag", Value::Tag("tag"));
     }
 
     #[test]
     fn test_eval_fun_call1() {
-        if let Ok((_, x)) = expr("(x -> x)(3)".into()) {
-            assert_eq!(x.eval_new(), Value::Int(3).into_ptr());
-        } else {
-            assert!(false);
-        }
+        evals_to!("(x -> x)(3)", Value::Int(3));
     }
 
     #[test]
     fn test_eval_fun_call2() {
-        if let Ok((_, x)) = expr("(x y z -> x)(1)(2)(3)".into()) {
-            assert_eq!(x.eval_new(), Value::Int(1).into_ptr());
-        } else {
-            assert!(false);
-        }
+        evals_to!("(x y z -> x)(1)(2)(3)", Value::Int(1));
     }
 
     #[test]
     fn test_eval_fun_call3() {
-        if let Ok((_, x)) = expr("(x y z -> z)(1)(2)(3)".into()) {
-            assert_eq!(x.eval_new(), Value::Int(3).into_ptr());
-        } else {
-            assert!(false);
-        }
+        evals_to!("(x y z -> z)(1)(2)(3)", Value::Int(3));
     }
 
     #[test]
     fn test_eval_id() {
-        if let Ok((_, x)) = expr("{id = x -> x; id(1)}".into()) {
-            assert_eq!(x.eval_new(), Value::Int(1).into_ptr());
-        } else {
-            assert!(false);
-        }
+        evals_to!("{id = x -> x; id(1)}", Value::Int(1));
     }
 
     #[test]
     fn test_eval_do() {
-        if let Ok((_, x)) = expr("{x = 1; x}".into()) {
-            assert_eq!(x.eval_new(), Value::Int(1).into_ptr());
-        } else {
-            assert!(false);
-        }
+        evals_to!("{x = 1; x}", Value::Int(1));
     }
 }
