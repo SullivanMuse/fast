@@ -71,6 +71,13 @@ expr = case | do | etuple | eapp
 
 ## Todo
 
+- Need to revamp the environment, so that we can push and pop at appropriate times.
+- Recursion
+    - In order to implement recursion
+        1. When the closure is created, check the environment for each capture. If a capture does not exist in the environment, add it as an Uninit
+        2. During assignment statements, if the binding already exists in the environment and is Uninit, edit the inner value to be init
+        3. When getting a value from the environment, if the value is Uninit, panic
+
 ## Done
 
 - Write parser
