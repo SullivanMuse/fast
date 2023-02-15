@@ -1,4 +1,6 @@
-use crate::expr::{App, Arm, Case, Do, Ellipsis, Expr, Input, Pattern, PatternApp, Statement};
+use crate::expr::{
+    App, Arm, Assign, Case, Do, Ellipsis, Expr, Input, Pattern, PatternApp, Statement,
+};
 use crate::span::Span;
 
 use nom::combinator::consumed;
@@ -156,11 +158,11 @@ fn assign(s: Input) -> IResult<Input, Statement> {
     let span = Span::between(s, s1);
     Ok((
         s1,
-        Statement::Assign {
+        Statement::Assign(Assign {
             span,
             pattern,
             expr,
-        },
+        }),
     ))
 }
 

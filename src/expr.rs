@@ -16,13 +16,16 @@ pub(crate) struct Ellipsis<'a> {
 }
 
 #[derive(Debug, PartialEq)]
+pub(crate) struct Assign<'a> {
+    pub(crate) span: Input<'a>,
+    pub(crate) pattern: Pattern<'a>,
+    pub(crate) expr: Expr<'a>,
+}
+
+#[derive(Debug, PartialEq)]
 pub(crate) enum Statement<'a> {
     Expr(Expr<'a>),
-    Assign {
-        span: Input<'a>,
-        pattern: Pattern<'a>,
-        expr: Expr<'a>,
-    },
+    Assign(Assign<'a>),
 }
 
 #[derive(Debug, PartialEq)]

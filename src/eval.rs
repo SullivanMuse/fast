@@ -1,6 +1,6 @@
 use crate::{
     env::{Env as Environment, EnvVec},
-    expr::{Ellipsis, Expr, Input},
+    expr::{Ellipsis, Expr, Input, Pattern, Statement},
 };
 use std::{cell::RefCell, rc::Rc};
 
@@ -23,6 +23,10 @@ pub(crate) enum Value<'a> {
 }
 
 impl<'a> Value<'a> {
+    fn unit() -> ValuePtr<'a> {
+        Self::Tuple(Vec::new()).into_ptr()
+    }
+
     fn into_ptr(self) -> ValuePtr<'a> {
         Rc::new(RefCell::new(self))
     }
@@ -91,7 +95,28 @@ impl<'a> Expr<'a> {
 
             Self::Paren(_, inner) => inner.eval(env),
 
-            Self::Do { .. } => todo!(),
+            Self::Do(ref inner) => {
+                let mut env = Env::new();
+                for statement in inner.statements.iter() {
+                    match statement {
+                        Statement::Expr(expr) => {
+                            expr.eval(&mut env);
+                        }
+                        Statement::Assign(assign) => {
+                            let value = assign.expr.eval(&mut env);
+                            match assign.pattern {
+                                Pattern::Id(span) => env.insert(span.as_inner().to_string(), value),
+                                _ => todo!(),
+                            }
+                        }
+                    }
+                }
+                inner
+                    .ret
+                    .as_ref()
+                    .map(|e| e.eval(&mut env))
+                    .unwrap_or_else(Value::unit)
+            }
 
             Self::Fn(_, param, inner) => {
                 let env = env.clone();
@@ -129,7 +154,15 @@ mod test {
     #[test]
     fn test_eval_tuple() {
         if let Ok((_, x)) = expr("(1, 2, 3)".into()) {
-            assert_eq!(x.eval_new(), Value::Tuple(vec![Value::Int(1).into_ptr(), Value::Int(2).into_ptr(), Value::Int(3).into_ptr()]).into_ptr());
+            assert_eq!(
+                x.eval_new(),
+                Value::Tuple(vec![
+                    Value::Int(1).into_ptr(),
+                    Value::Int(2).into_ptr(),
+                    Value::Int(3).into_ptr()
+                ])
+                .into_ptr()
+            );
         } else {
             assert!(false);
         }
@@ -166,6 +199,24 @@ mod test {
     fn test_eval_fun_call3() {
         if let Ok((_, x)) = expr("(x y z -> z)(1)(2)(3)".into()) {
             assert_eq!(x.eval_new(), Value::Int(3).into_ptr());
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn test_eval_id() {
+        if let Ok((_, x)) = expr("{id = x -> x; id(1)}".into()) {
+            assert_eq!(x.eval_new(), Value::Int(1).into_ptr());
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn test_eval_do() {
+        if let Ok((_, x)) = expr("{x = 1; x}".into()) {
+            assert_eq!(x.eval_new(), Value::Int(1).into_ptr());
         } else {
             assert!(false);
         }
