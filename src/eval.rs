@@ -114,10 +114,18 @@ impl<'a> Expr<'a> {
                                         None => {
                                             env.insert(key.to_string(), value);
                                         }
-                                        Some(inner) => match *inner.borrow() {
-                                            Value::Uninit => inner.swap(&value),
-                                            _ => env.insert(key.to_string(), value),
-                                        },
+                                        Some(inner) => {
+                                            let is_init = match *inner.borrow() {
+                                                Value::Uninit => true,
+                                                _ => false,
+                                            };
+
+                                            if is_init {
+                                                inner.swap(&value);
+                                            } else {
+                                                env.insert(key.to_string(), value);
+                                            }
+                                        }
                                     }
                                 }
                                 _ => todo!(),
@@ -284,5 +292,10 @@ mod test {
     #[test]
     fn test_eval_do() {
         evals_to!("{x = 1; x}", Value::Int(1));
+    }
+
+    #[test]
+    fn test_late_binding() {
+        evals_to!("{f = x -> g(x); g = x -> 5; f(1)}", Value::Int(5));
     }
 }
