@@ -5,6 +5,8 @@ mod parse;
 mod span;
 
 use parse::expr;
+use crate::eval::Value;
+use crate::eval::ValuePtr;
 
 fn main() {
     fn input() -> String {
@@ -13,6 +15,17 @@ fn main() {
         s
     }
 
+    fn dec(x: ValuePtr) -> ValuePtr {
+        match *x.borrow() {
+            Value::Int(x) => Value::Int(x - 1).into_ptr(),
+            _ => panic!("TypeError"),
+        }
+    }
+
+    let intrinsics: &[(&str, fn(ValuePtr) -> ValuePtr)] = &[
+        ("dec", dec),
+    ];
+
     loop {
         let s = input();
         let span = s.as_str().into();
@@ -20,7 +33,7 @@ fn main() {
         match expr {
             Err(_) => (),
             Ok((_, e)) => {
-                let value = e.eval_new();
+                let value = e.eval_with_intrinsics(intrinsics);
                 println!("{:?}", value);
             }
         }

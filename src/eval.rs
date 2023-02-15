@@ -20,6 +20,7 @@ pub(crate) enum Value<'a> {
     Tag(&'a str),
     Tuple(Vec<ValuePtr<'a>>),
     Closure(Closure<'a>),
+    Intrinsic(fn(ValuePtr<'a>) -> ValuePtr<'a>),
 }
 
 impl<'a> Value<'a> {
@@ -27,12 +28,12 @@ impl<'a> Value<'a> {
         Self::Tuple(Vec::new()).into_ptr()
     }
 
-    fn into_ptr(self) -> ValuePtr<'a> {
+    pub(crate) fn into_ptr(self) -> ValuePtr<'a> {
         Rc::new(RefCell::new(self))
     }
 }
 
-type ValuePtr<'a> = Rc<RefCell<Value<'a>>>;
+pub(crate) type ValuePtr<'a> = Rc<RefCell<Value<'a>>>;
 
 fn expand_list<'a>(exprs: &'a Vec<Expr<'a>>, env: &mut Env<'a>) -> Vec<ValuePtr<'a>> {
     let mut xs = Vec::new();
@@ -55,6 +56,14 @@ fn expand_list<'a>(exprs: &'a Vec<Expr<'a>>, env: &mut Env<'a>) -> Vec<ValuePtr<
 impl<'a> Expr<'a> {
     pub(crate) fn eval_new(&'a self) -> ValuePtr<'a> {
         let mut env = Env::new();
+        self.eval(&mut env)
+    }
+
+    pub(crate) fn eval_with_intrinsics(&'a self, fs: &[(&'a str, fn(ValuePtr<'a>) -> ValuePtr<'a>)]) -> ValuePtr<'a> {
+        let mut env = Env::new();
+        for (k, v) in fs {
+            env.insert(k.to_string(), Value::Intrinsic(*v).into_ptr());
+        }
         self.eval(&mut env)
     }
 
@@ -90,6 +99,11 @@ impl<'a> Expr<'a> {
                     let value = closure.body.eval(&mut closure_env);
                     closure_env.pop();
                     value
+                }
+                Value::Intrinsic(f) => {
+                    let args = expand_list(&app.args, env);
+                    assert!(args.len() == 1, "Intrinsics take one parameter.");
+                    f(args[0].clone())
                 }
                 _ => panic!("Callee must evaluate to a closure."),
             },
