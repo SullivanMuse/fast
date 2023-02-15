@@ -2,13 +2,13 @@ use crate::{
     env::{Env as Environment, EnvVec},
     expr::{Ellipsis, Expr, Input, Pattern, Statement},
 };
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
 type Env<'a> = EnvVec<String, ValuePtr<'a>>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Closure<'a> {
-    pub(crate) env: Env<'a>,
+    pub(crate) env: RefCell<Env<'a>>,
     pub(crate) params: Vec<Input<'a>>,
     pub(crate) body: &'a Expr<'a>,
 }
@@ -40,7 +40,7 @@ fn expand_list<'a>(exprs: &'a Vec<Expr<'a>>, env: &mut Env<'a>) -> Vec<ValuePtr<
         match elem {
             Expr::Expand(Ellipsis { span: _, id }) => {
                 let key: &str = id.expect("Must have value to unpack.").as_inner();
-                match *env.get(key).borrow_mut() {
+                match *env[key].borrow_mut() {
                     Value::Tuple(ref inner) => xs.extend(inner.iter().cloned()),
                     _ => panic!("Expand expression must evaluate to a tuple."),
                 }
@@ -62,7 +62,7 @@ impl<'a> Expr<'a> {
         match self {
             Self::Int(span) => Value::Int(span.as_inner().parse::<i64>().unwrap()).into_ptr(),
 
-            Self::Id(span) => env.get(span.as_inner()).clone(),
+            Self::Id(span) => env[span.as_inner()].clone(),
 
             Self::Tag(_, span) => Value::Tag(span.as_inner()).into_ptr(),
 
@@ -82,11 +82,14 @@ impl<'a> Expr<'a> {
                     );
 
                     // Copy the closure's environment
-                    let mut env = closure.env.clone();
+                    let mut closure_env = closure.env.borrow_mut();
+                    closure_env.push();
                     for (param, arg) in closure.params.iter().zip(args) {
-                        env.insert(param.as_inner().to_string(), arg);
+                        closure_env.insert(param.as_inner().to_string(), arg);
                     }
-                    closure.body.eval(&mut env)
+                    let value = closure.body.eval(&mut closure_env);
+                    closure_env.pop();
+                    value
                 }
                 _ => panic!("Callee must evaluate to a closure."),
             },
@@ -105,7 +108,18 @@ impl<'a> Expr<'a> {
                         Statement::Assign(assign) => {
                             let value = assign.expr.eval(&mut env);
                             match assign.pattern {
-                                Pattern::Id(span) => env.insert(span.as_inner().to_string(), value),
+                                Pattern::Id(span) => {
+                                    let key = span.as_inner();
+                                    match env.get(key).map(Clone::clone) {
+                                        None => {
+                                            env.insert(key.to_string(), value);
+                                        }
+                                        Some(inner) => match *inner.borrow() {
+                                            Value::Uninit => inner.swap(&value),
+                                            _ => env.insert(key.to_string(), value),
+                                        },
+                                    }
+                                }
                                 _ => todo!(),
                             }
                         }
@@ -119,11 +133,88 @@ impl<'a> Expr<'a> {
             }
 
             Self::Fn(_, param, inner) => {
-                let env = env.clone();
+                // Initialize uninitialized captures with Uninit
+                let set = {
+                    let mut set = HashSet::new();
+                    inner.free(&mut set);
+                    set.remove(param.as_inner());
+                    set
+                };
+                for key in set {
+                    if !env.contains(key) {
+                        env.insert(key.to_string(), Value::Uninit.into_ptr());
+                    }
+                }
+
+                let env = RefCell::new(env.clone());
                 let params = vec![*param];
                 let body = &inner;
                 Value::Closure(Closure { env, params, body }).into_ptr()
             }
+        }
+    }
+
+    fn free(&self, set: &mut HashSet<&'a str>) {
+        match self {
+            Expr::Id(span) => {
+                set.insert(span.as_inner());
+            }
+            Expr::Expand(ellipsis) => {
+                ellipsis.id.map(|id| set.insert(id.as_inner()));
+            }
+            Expr::Tuple(_, inner) => inner.iter().for_each(|e| e.free(set)),
+            Expr::App(app) => {
+                app.inner.free(set);
+                app.args.iter().for_each(|e| e.free(set));
+            }
+            Expr::Case(case) => {
+                case.subject.free(set);
+                for arm in &case.arms {
+                    arm.expr.free(set);
+                    arm.pattern.remove_bound(set);
+                }
+            }
+            Expr::Paren(_, inner) => inner.free(set),
+            Expr::Do(do_struct) => {
+                for statement in &do_struct.statements {
+                    match statement {
+                        Statement::Expr(e) => e.free(set),
+                        Statement::Assign(assign) => {
+                            assign.expr.free(set);
+                            assign.pattern.remove_bound(set);
+                        }
+                    }
+                }
+                do_struct.ret.as_ref().map(|e| e.free(set));
+            }
+            Expr::Fn(_, param, body) => {
+                body.free(set);
+                set.remove(param.as_inner());
+            }
+            _ => {}
+        }
+    }
+}
+
+impl<'a> Pattern<'a> {
+    fn remove_bound(&self, set: &mut HashSet<&'a str>) {
+        match self {
+            Pattern::Id(span) => {
+                set.remove(span.as_inner());
+            }
+            Pattern::Collect(ellipsis) => match ellipsis.id {
+                None => {}
+                Some(id) => {
+                    set.remove(id.as_inner());
+                }
+            },
+            Pattern::Tuple(_, inner) => inner.iter().for_each(|p| p.remove_bound(set)),
+            Pattern::App(pattern_app) => {
+                pattern_app.f.remove_bound(set);
+                pattern_app.xs.iter().for_each(|p| p.remove_bound(set));
+            }
+            Pattern::Paren(_, inner) => inner.remove_bound(set),
+            _ => {}
         }
     }
 }
