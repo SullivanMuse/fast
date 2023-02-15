@@ -1,19 +1,19 @@
 use crate::{
     env::{Env as Environment, EnvVec},
-    expr::{App, Case, Ellipsis, Expr, Input},
+    expr::{Ellipsis, Expr, Input},
 };
 use std::{cell::RefCell, rc::Rc};
 
 type Env<'a> = EnvVec<String, ValuePtr<'a>>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Closure<'a> {
     pub(crate) env: Env<'a>,
     pub(crate) params: Vec<Input<'a>>,
     pub(crate) body: &'a Expr<'a>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Value<'a> {
     Uninit,
     Int(i64),
@@ -60,20 +60,25 @@ impl<'a> Expr<'a> {
 
             Self::Id(span) => env.get(span.as_inner()).clone(),
 
-            Expr::Tag(_, span) => Value::Tag(span.as_inner()).into_ptr(),
+            Self::Tag(_, span) => Value::Tag(span.as_inner()).into_ptr(),
 
-            Expr::Expand(_) => panic!("Expand expressions must be inside tuples."),
+            Self::Expand(_) => panic!("Expand expressions must be inside tuples."),
 
-            Expr::Tuple(_, inner) => Value::Tuple(expand_list(inner, env)).into_ptr(),
+            Self::Tuple(_, inner) => Value::Tuple(expand_list(inner, env)).into_ptr(),
 
-            Expr::App(ref app) => match *app.inner.eval(env).borrow() {
+            Self::App(ref app) => match *app.inner.eval(env).borrow() {
                 Value::Closure(ref closure) => {
+                    // Expand arguments to closure
                     let args = expand_list(&app.args, env);
+
+                    // Make sure args match closure
                     assert!(
                         closure.params.len() == args.len(),
                         "Params must match args."
                     );
-                    let mut env = env.clone();
+
+                    // Copy the closure's environment
+                    let mut env = closure.env.clone();
                     for (param, arg) in closure.params.iter().zip(args) {
                         env.insert(param.as_inner().to_string(), arg);
                     }
@@ -82,18 +87,87 @@ impl<'a> Expr<'a> {
                 _ => panic!("Callee must evaluate to a closure."),
             },
 
-            Expr::Case(_) => todo!(),
+            Self::Case(_) => todo!(),
 
-            Expr::Paren(_, inner) => inner.eval(env),
+            Self::Paren(_, inner) => inner.eval(env),
 
-            Expr::Do { .. } => todo!(),
+            Self::Do { .. } => todo!(),
 
-            Expr::Fn(_, param, inner) => {
+            Self::Fn(_, param, inner) => {
                 let env = env.clone();
                 let params = vec![*param];
                 let body = &inner;
                 Value::Closure(Closure { env, params, body }).into_ptr()
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::expr;
+
+    #[test]
+    fn test_eval_int() {
+        if let Ok((_, x)) = expr("1234".into()) {
+            assert_eq!(x.eval_new(), Value::Int(1234).into_ptr());
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn test_eval_unit() {
+        if let Ok((_, x)) = expr("()".into()) {
+            assert_eq!(x.eval_new(), Value::Tuple(vec![]).into_ptr());
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn test_eval_tuple() {
+        if let Ok((_, x)) = expr("(1, 2, 3)".into()) {
+            assert_eq!(x.eval_new(), Value::Tuple(vec![Value::Int(1).into_ptr(), Value::Int(2).into_ptr(), Value::Int(3).into_ptr()]).into_ptr());
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn test_eval_tag() {
+        if let Ok((_, x)) = expr(":tag".into()) {
+            assert_eq!(x.eval_new(), Value::Tag("tag").into_ptr());
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn test_eval_fun_call1() {
+        if let Ok((_, x)) = expr("(x -> x)(3)".into()) {
+            assert_eq!(x.eval_new(), Value::Int(3).into_ptr());
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn test_eval_fun_call2() {
+        if let Ok((_, x)) = expr("(x y z -> x)(1)(2)(3)".into()) {
+            assert_eq!(x.eval_new(), Value::Int(1).into_ptr());
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn test_eval_fun_call3() {
+        if let Ok((_, x)) = expr("(x y z -> z)(1)(2)(3)".into()) {
+            assert_eq!(x.eval_new(), Value::Int(3).into_ptr());
+        } else {
+            assert!(false);
         }
     }
 }

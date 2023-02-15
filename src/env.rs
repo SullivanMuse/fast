@@ -12,7 +12,7 @@ pub(crate) trait Env<K, V>: Clone {
         K: Borrow<Q> + PartialEq<Q>;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct EnvVec<K, V>(Vec<(K, V)>);
 
 impl<K, V> EnvVec<K, V> {
