@@ -108,15 +108,17 @@ impl<'a> Expr<'a> {
                     assert!(args.len() == 1, "Intrinsics take one parameter.");
                     f(args[0].clone())
                 }
-                _ => panic!("Callee must evaluate to a closure."),
+                ref x => panic!("interpreter: callee must evaluate to a closure: {:?}, but got {:?} instead", self, x),
             },
 
             Self::Case(case) => {
                 let subject_value = case.subject.eval(env);
                 for arm in &case.arms {
+                    env.push();
                     if arm.pattern.bind(&subject_value, env) {
                         return arm.expr.eval(env);
                     }
+                    env.pop();
                 }
                 panic!("None of the case arms was found to match.");
             }
@@ -124,45 +126,30 @@ impl<'a> Expr<'a> {
             Self::Paren(_, inner) => inner.eval(env),
 
             Self::Do(ref inner) => {
-                let mut env = Env::new();
+                env.push();
                 for statement in inner.statements.iter() {
                     match statement {
                         Statement::Expr(expr) => {
-                            expr.eval(&mut env);
+                            expr.eval(env);
                         }
                         Statement::Assign(assign) => {
-                            let value = assign.expr.eval(&mut env);
-                            match assign.pattern {
-                                Pattern::Id(span) => {
-                                    let key = span.as_inner();
-                                    match env.get(key).map(Clone::clone) {
-                                        None => {
-                                            env.insert(key.to_string(), value);
-                                        }
-                                        Some(inner) => {
-                                            let is_init = match *inner.borrow() {
-                                                Value::Uninit => true,
-                                                _ => false,
-                                            };
-
-                                            if is_init {
-                                                inner.swap(&value);
-                                            } else {
-                                                env.insert(key.to_string(), value);
-                                            }
-                                        }
-                                    }
-                                }
-                                _ => todo!(),
+                            let value = assign.expr.eval(env);
+                            if !assign.pattern.bind(&value, env) {
+                                panic!(
+                                    "interpreter: irrefutable pattern failed to bind: {:?}",
+                                    assign.pattern
+                                );
                             }
                         }
                     }
                 }
-                inner
+                let out = inner
                     .ret
                     .as_ref()
-                    .map(|e| e.eval(&mut env))
-                    .unwrap_or_else(Value::unit)
+                    .map(|e| e.eval(env))
+                    .unwrap_or_else(Value::unit);
+                env.pop();
+                out
             }
 
             Self::Fn(_, param, inner) => {
@@ -252,11 +239,17 @@ impl<'a> Pattern<'a> {
     }
 
     fn bind(&self, value: &ValuePtr<'a>, env: &mut Env<'a>) -> bool {
-        env.push();
-        let out = match self {
+        match self {
             // id patterns bind unconditionally to the value
             Pattern::Id(id) => {
-                env.insert(id.as_inner().to_string(), value.clone());
+                let key = id.as_inner();
+                match env.get(key).map(Clone::clone) {
+                    Some(inner) => match inner.replace(Value::Uninit) {
+                        Value::Uninit => inner.swap(value),
+                        _ => env.insert(key.to_string(), value.clone()),
+                    }
+                    _ => env.insert(key.to_string(), value.clone()),
+                }
                 true
             }
 
@@ -355,11 +348,7 @@ impl<'a> Pattern<'a> {
 
             // Obviously we just bind the inner pattern
             Pattern::Paren(_, inner) => inner.bind(value, env),
-        };
-        if !out {
-            env.pop();
         }
-        out
     }
 }
 
@@ -437,12 +426,15 @@ mod test {
 
     #[test]
     fn test_case() {
-        evals_to!("{
+        evals_to!(
+            "{
             x = 5;
             case x
                 of 1 = x
                 of 5 = 8
             end
-        }", Value::Int(8));
+        }",
+            Value::Int(8)
+        );
     }
 }
