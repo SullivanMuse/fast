@@ -437,6 +437,12 @@ mod test {
 
     #[test]
     fn test_case() {
-        evals_to!("{x = 5; case x of 1 = x of 5 = 8 end}", Value::Int(8));
+        evals_to!("{
+            x = 5;
+            case x
+                of 1 = x
+                of 5 = 8
+            end
+        }", Value::Int(8));
     }
 }

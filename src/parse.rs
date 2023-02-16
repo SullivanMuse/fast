@@ -7,7 +7,7 @@ use nom::combinator::consumed;
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    character::complete::{alpha1, alphanumeric1, digit1, space0},
+    character::complete::{alpha1, alphanumeric1, digit1, multispace0},
     combinator::{cut, map, not, opt, value},
     multi::{many0, many1, separated_list0},
     sequence::{delimited, pair, preceded, terminated, tuple},
@@ -18,7 +18,7 @@ fn parse_int(s: Input) -> IResult<Input, Input> {
     let (s1, _) = tuple((
         digit1,
         many0(pair(tag("_"), digit1)),
-        cut(not(pair(space0, tag("_")))),
+        cut(not(pair(multispace0, tag("_")))),
     ))(s)?;
     Ok((s1, Span::between(s, s1)))
 }
@@ -33,7 +33,7 @@ fn parse_id(s: Input) -> IResult<Input, Input> {
 }
 
 fn parse_tag(s: Input) -> IResult<Input, (Input, Input)> {
-    let (s1, span) = preceded(pair(tag(":"), space0), parse_id)(s)?;
+    let (s1, span) = preceded(pair(tag(":"), multispace0), parse_id)(s)?;
     Ok((s1, (Span::between(s, s1), span)))
 }
 
@@ -54,7 +54,7 @@ fn eatom(s: Input) -> IResult<Input, Expr> {
 }
 
 fn parse_ellipsis(s: Input) -> IResult<Input, Ellipsis> {
-    let (s1, id) = preceded(tag(".."), preceded(space0, opt(parse_id)))(s)?;
+    let (s1, id) = preceded(tag(".."), preceded(multispace0, opt(parse_id)))(s)?;
     let span = Span::between(s, s1);
     Ok((s1, Ellipsis { span, id }))
 }
@@ -67,10 +67,10 @@ fn eapp(s: Input) -> IResult<Input, Expr> {
     /// '(' ws (eitem ws ',' ws)* eitem? ws ')'
     fn args(s: Input) -> IResult<Input, (Input, Vec<Expr>)> {
         let (s1, args) = delimited(
-            pair(tag("("), space0),
+            pair(tag("("), multispace0),
             map(
                 pair(
-                    many0(terminated(eitem, tuple((space0, tag(","), space0)))),
+                    many0(terminated(eitem, tuple((multispace0, tag(","), multispace0)))),
                     opt(eitem),
                 ),
                 |(mut xs, x)| {
@@ -80,13 +80,13 @@ fn eapp(s: Input) -> IResult<Input, Expr> {
                     xs
                 },
             ),
-            pair(space0, tag(")")),
+            pair(multispace0, tag(")")),
         )(s)?;
         let span = Span::between(s, s1);
         Ok((s1, (span, args)))
     }
 
-    let (s1, (mut f, xs)) = pair(eatom, many0(preceded(space0, args)))(s)?;
+    let (s1, (mut f, xs)) = pair(eatom, many0(preceded(multispace0, args)))(s)?;
     for (arg_span, args) in xs {
         let span = Span::to(s, arg_span);
         let inner = Box::new(f);
@@ -102,15 +102,15 @@ fn eapp(s: Input) -> IResult<Input, Expr> {
 
 /// eunit = '(' ')'
 fn eunit(s: Input) -> IResult<Input, Expr> {
-    let (s1, _) = tuple((tag("("), space0, tag(")")))(s)?;
+    let (s1, _) = tuple((tag("("), multispace0, tag(")")))(s)?;
     Ok((s1, Expr::Tuple(Span::between(s, s1), vec![])))
 }
 
 /// etuple = (eitem ',')+ eitem?
 fn etuple(s: Input) -> IResult<Input, Expr> {
     let (s1, (mut xs, x)) = pair(
-        many1(terminated(eitem, tuple((space0, tag(","), space0)))),
-        opt(preceded(space0, eitem)),
+        many1(terminated(eitem, tuple((multispace0, tag(","), multispace0)))),
+        opt(preceded(multispace0, eitem)),
     )(s)?;
     if let Some(x) = x {
         xs.push(x);
@@ -121,8 +121,8 @@ fn etuple(s: Input) -> IResult<Input, Expr> {
 
 fn arm(s: Input) -> IResult<Input, Arm> {
     let (s1, (pattern, expr)) = pair(
-        preceded(terminated(tag("of"), space0), pattern),
-        preceded(tuple((space0, tag("="), space0)), expr),
+        preceded(terminated(tag("of"), multispace0), pattern),
+        preceded(tuple((multispace0, tag("="), multispace0)), expr),
     )(s)?;
     let span = Span::between(s, s1);
     Ok((
@@ -137,8 +137,8 @@ fn arm(s: Input) -> IResult<Input, Arm> {
 
 fn ecase(s: Input) -> IResult<Input, Expr> {
     let (s1, (subject, arms)) = pair(
-        preceded(pair(tag("case"), space0), expr),
-        terminated(many0(preceded(space0, arm)), pair(space0, tag("end"))),
+        preceded(pair(tag("case"), multispace0), expr),
+        terminated(many0(preceded(multispace0, arm)), pair(multispace0, tag("end"))),
     )(s)?;
     let span = Span::between(s, s1);
     let subject = Box::new(subject);
@@ -154,7 +154,7 @@ fn ecase(s: Input) -> IResult<Input, Expr> {
 
 fn assign(s: Input) -> IResult<Input, Statement> {
     let (s1, (pattern, expr)) =
-        pair(pattern, preceded(tuple((space0, tag("="), space0)), expr))(s)?;
+        pair(pattern, preceded(tuple((multispace0, tag("="), multispace0)), expr))(s)?;
     let span = Span::between(s, s1);
     Ok((
         s1,
@@ -172,12 +172,12 @@ fn statement(s: Input) -> IResult<Input, Statement> {
 
 fn edo(s: Input) -> IResult<Input, Expr> {
     let (s1, (statements, ret)) = delimited(
-        pair(tag("{"), space0),
+        pair(tag("{"), multispace0),
         pair(
-            many0(terminated(statement, tuple((space0, tag(";"), space0)))),
+            many0(terminated(statement, tuple((multispace0, tag(";"), multispace0)))),
             opt(map(expr, Box::new)),
         ),
-        pair(space0, tag("}")),
+        pair(multispace0, tag("}")),
     )(s)?;
     let span = Span::between(s, s1);
     Ok((
@@ -191,7 +191,7 @@ fn edo(s: Input) -> IResult<Input, Expr> {
 }
 
 fn eparen(s: Input) -> IResult<Input, Expr> {
-    let (s1, inner) = delimited(pair(tag("("), space0), expr, pair(space0, tag(")")))(s)?;
+    let (s1, inner) = delimited(pair(tag("("), multispace0), expr, pair(multispace0, tag(")")))(s)?;
     let span = Span::between(s, s1);
     let expr = Expr::Paren(span, Box::new(inner));
     Ok((s1, expr))
@@ -201,10 +201,10 @@ fn eparen(s: Input) -> IResult<Input, Expr> {
 fn efn(s: Input) -> IResult<Input, Expr> {
     map(
         consumed(alt((
-            pair(parse_id, preceded(space0, map(efn, Box::new))),
+            pair(parse_id, preceded(multispace0, map(efn, Box::new))),
             pair(
                 parse_id,
-                preceded(tuple((space0, tag("->"), space0)), map(expr, Box::new)),
+                preceded(tuple((multispace0, tag("->"), multispace0)), map(expr, Box::new)),
             ),
         ))),
         |(span, (param, body))| Expr::Fn(span, param, body),
@@ -239,14 +239,14 @@ fn pignore(s: Input) -> IResult<Input, Pattern> {
 }
 
 fn punit(s: Input) -> IResult<Input, Pattern> {
-    let (s1, _) = tuple((tag("("), space0, tag(")")))(s)?;
+    let (s1, _) = tuple((tag("("), multispace0, tag(")")))(s)?;
     let span = Span::between(s, s1);
     let pat = Pattern::Tuple(span, vec![]);
     Ok((s1, pat))
 }
 
 fn pparen(s: Input) -> IResult<Input, Pattern> {
-    let (s1, inner) = delimited(pair(tag("("), space0), pattern, pair(space0, tag(")")))(s)?;
+    let (s1, inner) = delimited(pair(tag("("), multispace0), pattern, pair(multispace0, tag(")")))(s)?;
     let span = Span::between(s, s1);
     let pat = Pattern::Paren(span, Box::new(inner));
     Ok((s1, pat))
@@ -263,7 +263,7 @@ fn pitem(s: Input) -> IResult<Input, Pattern> {
 fn ptuple(s: Input) -> IResult<Input, Pattern> {
     let (s1, xs) = map(
         pair(
-            many1(terminated(pitem, tuple((space0, tag(","), space0)))),
+            many1(terminated(pitem, tuple((multispace0, tag(","), multispace0)))),
             opt(pitem),
         ),
         |(mut xs, x)| {
@@ -281,9 +281,9 @@ fn ptuple(s: Input) -> IResult<Input, Pattern> {
 fn papp(s: Input) -> IResult<Input, Pattern> {
     fn args(s: Input) -> IResult<Input, (Input, Vec<Pattern>)> {
         let (s1, xs) = delimited(
-            pair(tag("("), space0),
-            separated_list0(tuple((space0, tag(","), space0)), pitem),
-            pair(space0, tag(")")),
+            pair(tag("("), multispace0),
+            separated_list0(tuple((multispace0, tag(","), multispace0)), pitem),
+            pair(multispace0, tag(")")),
         )(s)?;
         let span = Span::between(s, s1);
         Ok((s1, (span, xs)))
