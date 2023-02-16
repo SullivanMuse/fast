@@ -59,7 +59,10 @@ impl<'a> Expr<'a> {
         self.eval(&mut env)
     }
 
-    pub(crate) fn eval_with_intrinsics(&'a self, fs: &[(&'a str, fn(ValuePtr<'a>) -> ValuePtr<'a>)]) -> ValuePtr<'a> {
+    pub(crate) fn eval_with_intrinsics(
+        &'a self,
+        fs: &[(&'a str, fn(ValuePtr<'a>) -> ValuePtr<'a>)],
+    ) -> ValuePtr<'a> {
         let mut env = Env::new();
         for (k, v) in fs {
             env.insert(k.to_string(), Value::Intrinsic(*v).into_ptr());
@@ -108,7 +111,15 @@ impl<'a> Expr<'a> {
                 _ => panic!("Callee must evaluate to a closure."),
             },
 
-            Self::Case(_) => todo!(),
+            Self::Case(case) => {
+                let subject_value = case.subject.eval(env);
+                for arm in &case.arms {
+                    if arm.pattern.bind(&subject_value, env) {
+                        return arm.expr.eval(env);
+                    }
+                }
+                panic!("None of the case arms was found to match.");
+            }
 
             Self::Paren(_, inner) => inner.eval(env),
 
@@ -239,6 +250,117 @@ impl<'a> Pattern<'a> {
             _ => {}
         }
     }
+
+    fn bind(&self, value: &ValuePtr<'a>, env: &mut Env<'a>) -> bool {
+        env.push();
+        let out = match self {
+            // id patterns bind unconditionally to the value
+            Pattern::Id(id) => {
+                env.insert(id.as_inner().to_string(), value.clone());
+                true
+            }
+
+            // ignore conditions bind unconditionally without modifying the environment
+            Pattern::Ignore(_) => true,
+
+            // int patterns bind if the value is equal to the specified int
+            Pattern::Int(x) => {
+                let x = x.as_inner().parse::<i64>().expect("Bad int pattern.");
+                match *value.borrow() {
+                    Value::Int(y) if x == y => true,
+                    _ => false,
+                }
+            }
+
+            // tag pattern binds if the value is equal to the specified tag
+            Pattern::Tag(_, span) => match *value.borrow() {
+                Value::Tag(tag) if span.as_inner() == tag => true,
+                _ => false,
+            },
+
+            // Bare collects are not allowed
+            Pattern::Collect(_) => panic!("Bare collect patterns are not allowed."),
+
+            // May include up to one collect pattern
+            Pattern::Tuple(_, patterns) => {
+                // Ensure that the value is a tuple
+                let value = value.borrow();
+                let values = if let Value::Tuple(ref values) = *value {
+                    values
+                } else {
+                    return false;
+                };
+
+                let collect_count = patterns
+                    .iter()
+                    .filter(|pat| match pat {
+                        Pattern::Collect(_) => true,
+                        _ => false,
+                    })
+                    .count();
+                assert!(
+                    collect_count <= 1,
+                    "May be a maximum of one collect pattern within a tuple pattern."
+                );
+
+                if collect_count == 0 {
+                    if patterns.len() == values.len() {
+                        patterns
+                            .iter()
+                            .zip(values.iter())
+                            .map(|(pat, ex)| pat.bind(ex, env))
+                            .all(|x| x)
+                    } else {
+                        false
+                    }
+                } else {
+                    let collect_index = patterns
+                        .iter()
+                        .position(|pat| match pat {
+                            Pattern::Collect(_) => true,
+                            _ => false,
+                        })
+                        .expect("There should have been a collect pattern here.");
+                    let first = patterns[..collect_index]
+                        .iter()
+                        .zip(values[..collect_index].iter())
+                        .map(|(pat, ex)| pat.bind(ex, env))
+                        .all(|x| x);
+                    let collect_values_count = (patterns.len() - 1) - values.len();
+                    // collect values
+                    let collected = values[collect_index..collect_index + collect_values_count]
+                        .iter()
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    if let Pattern::Collect(ellipsis) = &patterns[collect_index] {
+                        if let Some(id) = ellipsis.id {
+                            env.insert(
+                                id.as_inner().to_string(),
+                                Value::Tuple(collected).into_ptr(),
+                            );
+                        }
+                    } else {
+                        panic!("There should be a collect pattern here.");
+                    }
+                    let second = patterns[collect_index + 1..]
+                        .iter()
+                        .zip(values[collect_index + collect_values_count..].iter())
+                        .map(|(pat, ex)| pat.bind(ex, env))
+                        .all(|x| x);
+                    first && second
+                }
+            }
+
+            Pattern::App(_) => todo!(),
+
+            // Obviously we just bind the inner pattern
+            Pattern::Paren(_, inner) => inner.bind(value, env),
+        };
+        if !out {
+            env.pop();
+        }
+        out
+    }
 }
 
 #[cfg(test)]
@@ -311,5 +433,10 @@ mod test {
     #[test]
     fn test_late_binding() {
         evals_to!("{f = x -> g(x); g = x -> 5; f(1)}", Value::Int(5));
+    }
+
+    #[test]
+    fn test_case() {
+        evals_to!("{x = 5; case x of 1 = x of 5 = 8 end}", Value::Int(8));
     }
 }
