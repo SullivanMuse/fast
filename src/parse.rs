@@ -70,7 +70,10 @@ fn eapp(s: Input) -> IResult<Input, Expr> {
             pair(tag("("), multispace0),
             map(
                 pair(
-                    many0(terminated(eitem, tuple((multispace0, tag(","), multispace0)))),
+                    many0(terminated(
+                        eitem,
+                        tuple((multispace0, tag(","), multispace0)),
+                    )),
                     opt(eitem),
                 ),
                 |(mut xs, x)| {
@@ -109,7 +112,10 @@ fn eunit(s: Input) -> IResult<Input, Expr> {
 /// etuple = (eitem ',')+ eitem?
 fn etuple(s: Input) -> IResult<Input, Expr> {
     let (s1, (mut xs, x)) = pair(
-        many1(terminated(eitem, tuple((multispace0, tag(","), multispace0)))),
+        many1(terminated(
+            eitem,
+            tuple((multispace0, tag(","), multispace0)),
+        )),
         opt(preceded(multispace0, eitem)),
     )(s)?;
     if let Some(x) = x {
@@ -138,7 +144,10 @@ fn arm(s: Input) -> IResult<Input, Arm> {
 fn ecase(s: Input) -> IResult<Input, Expr> {
     let (s1, (subject, arms)) = pair(
         preceded(pair(tag("case"), multispace0), expr),
-        terminated(many0(preceded(multispace0, arm)), pair(multispace0, tag("end"))),
+        terminated(
+            many0(preceded(multispace0, arm)),
+            pair(multispace0, tag("end")),
+        ),
     )(s)?;
     let span = Span::between(s, s1);
     let subject = Box::new(subject);
@@ -153,8 +162,10 @@ fn ecase(s: Input) -> IResult<Input, Expr> {
 }
 
 fn assign(s: Input) -> IResult<Input, Statement> {
-    let (s1, (pattern, expr)) =
-        pair(pattern, preceded(tuple((multispace0, tag("="), multispace0)), expr))(s)?;
+    let (s1, (pattern, expr)) = pair(
+        pattern,
+        preceded(tuple((multispace0, tag("="), multispace0)), expr),
+    )(s)?;
     let span = Span::between(s, s1);
     Ok((
         s1,
@@ -174,7 +185,10 @@ fn edo(s: Input) -> IResult<Input, Expr> {
     let (s1, (statements, ret)) = delimited(
         pair(tag("{"), multispace0),
         pair(
-            many0(terminated(statement, tuple((multispace0, tag(";"), multispace0)))),
+            many0(terminated(
+                statement,
+                tuple((multispace0, tag(";"), multispace0)),
+            )),
             opt(map(expr, Box::new)),
         ),
         pair(multispace0, tag("}")),
@@ -191,7 +205,11 @@ fn edo(s: Input) -> IResult<Input, Expr> {
 }
 
 fn eparen(s: Input) -> IResult<Input, Expr> {
-    let (s1, inner) = delimited(pair(tag("("), multispace0), expr, pair(multispace0, tag(")")))(s)?;
+    let (s1, inner) = delimited(
+        pair(tag("("), multispace0),
+        expr,
+        pair(multispace0, tag(")")),
+    )(s)?;
     let span = Span::between(s, s1);
     let expr = Expr::Paren(span, Box::new(inner));
     Ok((s1, expr))
@@ -204,7 +222,10 @@ fn efn(s: Input) -> IResult<Input, Expr> {
             pair(parse_id, preceded(multispace0, map(efn, Box::new))),
             pair(
                 parse_id,
-                preceded(tuple((multispace0, tag("->"), multispace0)), map(expr, Box::new)),
+                preceded(
+                    tuple((multispace0, tag("->"), multispace0)),
+                    map(expr, Box::new),
+                ),
             ),
         ))),
         |(span, (param, body))| Expr::Fn(span, param, body),
@@ -246,7 +267,11 @@ fn punit(s: Input) -> IResult<Input, Pattern> {
 }
 
 fn pparen(s: Input) -> IResult<Input, Pattern> {
-    let (s1, inner) = delimited(pair(tag("("), multispace0), pattern, pair(multispace0, tag(")")))(s)?;
+    let (s1, inner) = delimited(
+        pair(tag("("), multispace0),
+        pattern,
+        pair(multispace0, tag(")")),
+    )(s)?;
     let span = Span::between(s, s1);
     let pat = Pattern::Paren(span, Box::new(inner));
     Ok((s1, pat))
@@ -263,7 +288,10 @@ fn pitem(s: Input) -> IResult<Input, Pattern> {
 fn ptuple(s: Input) -> IResult<Input, Pattern> {
     let (s1, xs) = map(
         pair(
-            many1(terminated(pitem, tuple((multispace0, tag(","), multispace0)))),
+            many1(terminated(
+                pitem,
+                tuple((multispace0, tag(","), multispace0)),
+            )),
             opt(pitem),
         ),
         |(mut xs, x)| {

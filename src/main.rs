@@ -4,9 +4,9 @@ mod expr;
 mod parse;
 mod span;
 
-use parse::expr;
 use crate::eval::Value;
 use crate::eval::ValuePtr;
+use parse::expr;
 
 fn main() {
     fn input() -> String {
@@ -22,9 +22,7 @@ fn main() {
         }
     }
 
-    let intrinsics: &[(&str, fn(ValuePtr) -> ValuePtr)] = &[
-        ("dec", dec),
-    ];
+    let intrinsics: &[(&str, fn(ValuePtr) -> ValuePtr)] = &[("dec", dec)];
 
     loop {
         let s = input();
@@ -34,7 +32,7 @@ fn main() {
             Err(_) => (),
             Ok((_, e)) => {
                 let value = e.eval_with_intrinsics(intrinsics);
-                println!("{:?}", value);
+                println!("{value:?}");
             }
         }
     }

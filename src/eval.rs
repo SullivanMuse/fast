@@ -87,8 +87,7 @@ impl<'a> Expr<'a> {
             Self::Tag(_, span) => Value::Tag(span.as_inner()).into_ptr(),
 
             Self::Expand(_) => panic!(
-                "interpreter: expand expressions must be inside tuples: {:?}",
-                self
+                "interpreter: expand expressions must be inside tuples: {self:?}"
             ),
 
             Self::Tuple(_, inner) => Value::Tuple(expand_list(inner, env)).into_ptr(),
@@ -120,14 +119,12 @@ impl<'a> Expr<'a> {
                     let args = expand_list(&app.args, env);
                     assert!(
                         args.len() == 1,
-                        "interpreter: intrinsics take one parameter: {:?}",
-                        self
+                        "interpreter: intrinsics take one parameter: {self:?}"
                     );
                     f(args[0].clone())
                 }
                 ref x => panic!(
-                    "interpreter: callee must evaluate to a closure: {:?}, but got {:?} instead",
-                    self, x
+                    "interpreter: callee must evaluate to a closure: {self:?}, but got {x:?} instead"
                 ),
             },
 
@@ -141,8 +138,7 @@ impl<'a> Expr<'a> {
                     env.pop();
                 }
                 panic!(
-                    "interpreter: none of the case arms was found to match: {:?}",
-                    case
+                    "interpreter: none of the case arms was found to match: {case:?}"
                 );
             }
 
@@ -228,7 +224,9 @@ impl<'a> Expr<'a> {
                         }
                     }
                 }
-                do_struct.ret.as_ref().map(|e| e.free(set));
+                if let Some(e) = do_struct.ret.as_ref() {
+                    e.free(set)
+                }
             }
             Expr::Fn(_, param, body) => {
                 body.free(set);
@@ -286,23 +284,18 @@ impl<'a> Pattern<'a> {
                     "interpreter: failed to parse {:?} as i64",
                     self
                 );
-                match *value.borrow() {
-                    Value::Int(y) if x == y => true,
-                    _ => false,
-                }
+                matches!(*value.borrow(), Value::Int(y) if x == y)
             }
 
             // tag pattern binds if the value is equal to the specified tag
-            Pattern::Tag(_, span) => match *value.borrow() {
-                Value::Tag(tag) if span.as_inner() == tag => true,
-                _ => false,
-            },
+            Pattern::Tag(_, span) => {
+                matches!(*value.borrow(), Value::Tag(tag) if span.as_inner() == tag)
+            }
 
             // Bare collects are not allowed
-            Pattern::Collect(_) => panic!(
-                "interpreter: bare collect patterns are not allowed: {:?}",
-                self
-            ),
+            Pattern::Collect(_) => {
+                panic!("interpreter: bare collect patterns are not allowed: {self:?}")
+            }
 
             // May include up to one collect pattern
             Pattern::Tuple(_, patterns) => {
@@ -316,15 +309,11 @@ impl<'a> Pattern<'a> {
 
                 let collect_count = patterns
                     .iter()
-                    .filter(|pat| match pat {
-                        Pattern::Collect(_) => true,
-                        _ => false,
-                    })
+                    .filter(|pat| matches!(pat, Pattern::Collect(_)))
                     .count();
                 assert!(
                     collect_count <= 1,
-                    "interpreter: must be a maximum of one collect pattern within a tuple pattern: {:?}",
-                    self
+                    "interpreter: must be a maximum of one collect pattern within a tuple pattern: {self:?}"
                 );
 
                 if collect_count == 0 {
@@ -339,10 +328,9 @@ impl<'a> Pattern<'a> {
                     }
                 } else {
                     let collect_index = unwrap!(
-                        patterns.iter().position(|pat| match pat {
-                            Pattern::Collect(_) => true,
-                            _ => false,
-                        }),
+                        patterns
+                            .iter()
+                            .position(|pat| matches!(pat, Pattern::Collect(_))),
                         "interpreter: should be a collect pattern here: {:?}",
                         self
                     );
@@ -353,10 +341,8 @@ impl<'a> Pattern<'a> {
                         .all(|x| x);
                     let collect_values_count = (patterns.len() - 1) - values.len();
                     // collect values
-                    let collected = values[collect_index..collect_index + collect_values_count]
-                        .iter()
-                        .cloned()
-                        .collect::<Vec<_>>();
+                    let collected =
+                        values[collect_index..collect_index + collect_values_count].to_vec();
                     if let Pattern::Collect(ellipsis) = &patterns[collect_index] {
                         if let Some(id) = ellipsis.id {
                             env.insert(
@@ -365,10 +351,7 @@ impl<'a> Pattern<'a> {
                             );
                         }
                     } else {
-                        panic!(
-                            "interpreter: there should be a collect pattern here: {:?}",
-                            self
-                        );
+                        panic!("interpreter: there should be a collect pattern here: {self:?}");
                     }
                     let second = patterns[collect_index + 1..]
                         .iter()

@@ -82,8 +82,7 @@ where
     fn input_len(&self) -> usize {
         self.end
             .min(self.inner.input_len())
-            .checked_sub(self.start)
-            .unwrap_or(0)
+            .saturating_sub(self.start)
     }
 }
 
@@ -256,7 +255,7 @@ where
 
 impl<T> Offset for Span<T> {
     fn offset(&self, second: &Self) -> usize {
-        second.start.checked_sub(self.start).unwrap_or(0)
+        second.start.saturating_sub(self.start)
     }
 }
 
