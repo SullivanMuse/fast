@@ -3,6 +3,7 @@ use crate::{
     expr::{Ellipsis, Expr, Input, Pattern, Statement},
 };
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
+use unwrap::unwrap;
 
 type Env<'a> = EnvVec<String, ValuePtr<'a>>;
 
@@ -72,13 +73,23 @@ impl<'a> Expr<'a> {
 
     fn eval(&'a self, env: &mut Env<'a>) -> ValuePtr<'a> {
         match self {
-            Self::Int(span) => Value::Int(span.as_inner().parse::<i64>().unwrap()).into_ptr(),
+            Self::Int(span) => {
+                let value = unwrap!(
+                    span.as_inner().parse::<i64>(),
+                    "interpreter: {:?} failed to parse to i64",
+                    self
+                );
+                Value::Int(value).into_ptr()
+            }
 
             Self::Id(span) => env[span.as_inner()].clone(),
 
             Self::Tag(_, span) => Value::Tag(span.as_inner()).into_ptr(),
 
-            Self::Expand(_) => panic!("Expand expressions must be inside tuples."),
+            Self::Expand(_) => panic!(
+                "interpreter: expand expressions must be inside tuples: {:?}",
+                self
+            ),
 
             Self::Tuple(_, inner) => Value::Tuple(expand_list(inner, env)).into_ptr(),
 
@@ -90,7 +101,9 @@ impl<'a> Expr<'a> {
                     // Make sure args match closure
                     assert!(
                         closure.params.len() == args.len(),
-                        "Params must match args."
+                        "interpreter: params ({:?}) do not match args ({:?})",
+                        &closure.params,
+                        &app.args,
                     );
 
                     // Copy the closure's environment
@@ -105,10 +118,17 @@ impl<'a> Expr<'a> {
                 }
                 Value::Intrinsic(f) => {
                     let args = expand_list(&app.args, env);
-                    assert!(args.len() == 1, "Intrinsics take one parameter.");
+                    assert!(
+                        args.len() == 1,
+                        "interpreter: intrinsics take one parameter: {:?}",
+                        self
+                    );
                     f(args[0].clone())
                 }
-                ref x => panic!("interpreter: callee must evaluate to a closure: {:?}, but got {:?} instead", self, x),
+                ref x => panic!(
+                    "interpreter: callee must evaluate to a closure: {:?}, but got {:?} instead",
+                    self, x
+                ),
             },
 
             Self::Case(case) => {
@@ -120,7 +140,10 @@ impl<'a> Expr<'a> {
                     }
                     env.pop();
                 }
-                panic!("None of the case arms was found to match.");
+                panic!(
+                    "interpreter: none of the case arms was found to match: {:?}",
+                    case
+                );
             }
 
             Self::Paren(_, inner) => inner.eval(env),
@@ -247,7 +270,7 @@ impl<'a> Pattern<'a> {
                     Some(inner) => match inner.replace(Value::Uninit) {
                         Value::Uninit => inner.swap(value),
                         _ => env.insert(key.to_string(), value.clone()),
-                    }
+                    },
                     _ => env.insert(key.to_string(), value.clone()),
                 }
                 true
@@ -258,7 +281,11 @@ impl<'a> Pattern<'a> {
 
             // int patterns bind if the value is equal to the specified int
             Pattern::Int(x) => {
-                let x = x.as_inner().parse::<i64>().expect("Bad int pattern.");
+                let x = unwrap!(
+                    x.as_inner().parse::<i64>(),
+                    "interpreter: failed to parse {:?} as i64",
+                    self
+                );
                 match *value.borrow() {
                     Value::Int(y) if x == y => true,
                     _ => false,
@@ -272,7 +299,10 @@ impl<'a> Pattern<'a> {
             },
 
             // Bare collects are not allowed
-            Pattern::Collect(_) => panic!("Bare collect patterns are not allowed."),
+            Pattern::Collect(_) => panic!(
+                "interpreter: bare collect patterns are not allowed: {:?}",
+                self
+            ),
 
             // May include up to one collect pattern
             Pattern::Tuple(_, patterns) => {
@@ -293,7 +323,8 @@ impl<'a> Pattern<'a> {
                     .count();
                 assert!(
                     collect_count <= 1,
-                    "May be a maximum of one collect pattern within a tuple pattern."
+                    "interpreter: must be a maximum of one collect pattern within a tuple pattern: {:?}",
+                    self
                 );
 
                 if collect_count == 0 {
@@ -307,13 +338,14 @@ impl<'a> Pattern<'a> {
                         false
                     }
                 } else {
-                    let collect_index = patterns
-                        .iter()
-                        .position(|pat| match pat {
+                    let collect_index = unwrap!(
+                        patterns.iter().position(|pat| match pat {
                             Pattern::Collect(_) => true,
                             _ => false,
-                        })
-                        .expect("There should have been a collect pattern here.");
+                        }),
+                        "interpreter: should be a collect pattern here: {:?}",
+                        self
+                    );
                     let first = patterns[..collect_index]
                         .iter()
                         .zip(values[..collect_index].iter())
@@ -333,7 +365,10 @@ impl<'a> Pattern<'a> {
                             );
                         }
                     } else {
-                        panic!("There should be a collect pattern here.");
+                        panic!(
+                            "interpreter: there should be a collect pattern here: {:?}",
+                            self
+                        );
                     }
                     let second = patterns[collect_index + 1..]
                         .iter()
