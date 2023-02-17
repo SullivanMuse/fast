@@ -3,12 +3,23 @@ use nom::{
     Compare, Err, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, Slice,
 };
 use std::ops::{Range, RangeFrom, RangeFull, RangeTo};
+use unwrap::unwrap;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Span<T> {
     inner: T,
     start: usize,
     end: usize,
+}
+
+impl<'a> Span<&'a str> {
+    pub(crate) fn value_i64(&self) -> i64 {
+        unwrap!(
+            self.as_inner().parse::<i64>(),
+            "interpreter: {:?} failed to parse to i64",
+            self
+        )
+    }
 }
 
 // impl<T> std::fmt::Debug for Span<T> {
