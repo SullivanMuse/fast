@@ -7,27 +7,65 @@ use unwrap::unwrap;
 
 type Env<'a> = EnvVec<String, ValuePtr<'a>>;
 
+pub(crate) type Intrinsic<'a> = fn(&Value<'a>) -> Value<'a>;
+
+pub(crate) type Intrinsics<'a> = Vec<(&'static str, Intrinsic<'a>)>;
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Closure<'a> {
     pub(crate) env: RefCell<Env<'a>>,
     pub(crate) params: Vec<Input<'a>>,
-    pub(crate) body: &'a Expr<'a>,
+    pub(crate) body: Expr<'a>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone)]
 pub(crate) enum Value<'a> {
     Uninit,
     Int(i64),
     Tag(&'a str),
     Tuple(Vec<ValuePtr<'a>>),
     Closure(Closure<'a>),
-    Intrinsic(fn(ValuePtr<'a>) -> ValuePtr<'a>),
+    Intrinsic(Intrinsic<'a>),
+}
+
+impl<'a> std::fmt::Debug for Value<'a> {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Uninit => fmt.debug_tuple("Value::Uninit").finish(),
+            Value::Int(x) => fmt.debug_tuple("Value::Int").field(x).finish(),
+            Value::Tag(tag) => fmt.debug_tuple("Value::Tag").field(tag).finish(),
+            Value::Tuple(inner) => fmt.debug_tuple("Value::Tuple").field(inner).finish(),
+            Value::Closure(closure) => fmt.debug_tuple("Value::Closure").field(closure).finish(),
+            Value::Intrinsic(_) => fmt.debug_tuple("Value::Intrinsic").finish(),
+        }
+    }
+}
+
+impl<'a> core::cmp::PartialEq for Value<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Uninit, Value::Uninit) => true,
+            (Value::Int(x), Value::Int(y)) if x == y => true,
+            (Value::Tag(x), Value::Tag(y)) if x == y => true,
+            (Value::Tuple(x), Value::Tuple(y)) if x == y => true,
+            (Value::Closure(x), Value::Closure(y)) if x == y => true,
+            (Value::Intrinsic(x), Value::Intrinsic(y)) if std::ptr::eq(x, y) => true,
+            _ => false,
+        }
+    }
 }
 
 impl<'a> Value<'a> {
-    fn unit() -> ValuePtr<'a> {
-        Self::Tuple(Vec::new()).into_ptr()
+    pub(crate) fn get_i64(&self) -> i64 {
+        match self {
+            Value::Int(x) => *x,
+            _ => panic!("interpreter: expected i64: {:?}", self),
+        }
     }
+}
+
+impl<'a> Value<'a> {
+    const UNIT: Self = Self::Tuple(Vec::new());
 
     pub(crate) fn into_ptr(self) -> ValuePtr<'a> {
         Rc::new(RefCell::new(self))
@@ -36,7 +74,7 @@ impl<'a> Value<'a> {
 
 pub(crate) type ValuePtr<'a> = Rc<RefCell<Value<'a>>>;
 
-fn expand_list<'a>(exprs: &'a Vec<Expr<'a>>, env: &mut Env<'a>) -> Vec<ValuePtr<'a>> {
+fn expand_list<'a>(exprs: &Vec<Expr<'a>>, env: &mut Env<'a>) -> Vec<ValuePtr<'a>> {
     let mut xs = Vec::new();
     for elem in exprs {
         match elem {
@@ -48,22 +86,19 @@ fn expand_list<'a>(exprs: &'a Vec<Expr<'a>>, env: &mut Env<'a>) -> Vec<ValuePtr<
                 }
             }
 
-            elem => xs.push(elem.eval(env)),
+            elem => xs.push(elem.eval(env).into_ptr()),
         }
     }
     xs
 }
 
 impl<'a> Expr<'a> {
-    pub(crate) fn eval_new(&'a self) -> ValuePtr<'a> {
+    pub(crate) fn eval_new(&'a self) -> Value<'a> {
         let mut env = Env::new();
         self.eval(&mut env)
     }
 
-    pub(crate) fn eval_with_intrinsics(
-        &'a self,
-        fs: &[(&'a str, fn(ValuePtr<'a>) -> ValuePtr<'a>)],
-    ) -> ValuePtr<'a> {
+    pub(crate) fn eval_with_intrinsics(&self, fs: &Intrinsics<'a>) -> Value<'a> {
         let mut env = Env::new();
         for (k, v) in fs {
             env.insert(k.to_string(), Value::Intrinsic(*v).into_ptr());
@@ -71,29 +106,22 @@ impl<'a> Expr<'a> {
         self.eval(&mut env)
     }
 
-    fn eval(&'a self, env: &mut Env<'a>) -> ValuePtr<'a> {
+    fn eval(&self, env: &mut Env<'a>) -> Value<'a> {
         match self {
-            Self::Int(span) => {
-                let value = unwrap!(
-                    span.as_inner().parse::<i64>(),
-                    "interpreter: {:?} failed to parse to i64",
-                    self
-                );
-                Value::Int(value).into_ptr()
-            }
+            Self::Int(span) => Value::Int(span.value_i64()),
 
-            Self::Id(span) => env[span.as_inner()].clone(),
+            Self::Id(span) => env[span.as_inner()].borrow().clone(),
 
-            Self::Tag(_, span) => Value::Tag(span.as_inner()).into_ptr(),
+            Self::Tag(_, span) => Value::Tag(span.as_inner()),
 
             Self::Expand(_) => panic!(
                 "interpreter: expand expressions must be inside tuples: {self:?}"
             ),
 
-            Self::Tuple(_, inner) => Value::Tuple(expand_list(inner, env)).into_ptr(),
+            Self::Tuple(_, inner) => Value::Tuple(expand_list(inner, env)),
 
-            Self::App(ref app) => match *app.inner.eval(env).borrow() {
-                Value::Closure(ref closure) => {
+            Self::App(ref app) => match app.inner.eval(env) {
+                Value::Closure(closure) => {
                     // Expand arguments to closure
                     let args = expand_list(&app.args, env);
 
@@ -115,15 +143,17 @@ impl<'a> Expr<'a> {
                     closure_env.pop();
                     value
                 }
+
                 Value::Intrinsic(f) => {
                     let args = expand_list(&app.args, env);
                     assert!(
                         args.len() == 1,
                         "interpreter: intrinsics take one parameter: {self:?}"
                     );
-                    f(args[0].clone())
+                    f(&Value::Tuple(args))
                 }
-                ref x => panic!(
+
+                x => panic!(
                     "interpreter: callee must evaluate to a closure: {self:?}, but got {x:?} instead"
                 ),
             },
@@ -144,7 +174,7 @@ impl<'a> Expr<'a> {
 
             Self::Paren(_, inner) => inner.eval(env),
 
-            Self::Do(ref inner) => {
+            Self::Do(inner) => {
                 env.push();
                 for statement in inner.statements.iter() {
                     match statement {
@@ -166,7 +196,7 @@ impl<'a> Expr<'a> {
                     .ret
                     .as_ref()
                     .map(|e| e.eval(env))
-                    .unwrap_or_else(Value::unit);
+                    .unwrap_or(Value::UNIT);
                 env.pop();
                 out
             }
@@ -187,8 +217,8 @@ impl<'a> Expr<'a> {
 
                 let env = RefCell::new(env.clone());
                 let params = vec![*param];
-                let body = &inner;
-                Value::Closure(Closure { env, params, body }).into_ptr()
+                let body = (**inner).clone();
+                Value::Closure(Closure { env, params, body })
             }
         }
     }
@@ -259,17 +289,19 @@ impl<'a> Pattern<'a> {
         }
     }
 
-    fn bind(&self, value: &ValuePtr<'a>, env: &mut Env<'a>) -> bool {
+    fn bind(&self, value: &Value<'a>, env: &mut Env<'a>) -> bool {
         match self {
             // id patterns bind unconditionally to the value
             Self::Id(id) => {
                 let key = id.as_inner();
                 match env.get(key).map(Clone::clone) {
                     Some(inner) => match inner.replace(Value::Uninit) {
-                        Value::Uninit => inner.swap(value),
-                        _ => env.insert(key.to_string(), value.clone()),
+                        Value::Uninit => {
+                            inner.replace(value.clone());
+                        }
+                        _ => env.insert(key.to_string(), value.clone().into_ptr()),
                     },
-                    _ => env.insert(key.to_string(), value.clone()),
+                    _ => env.insert(key.to_string(), value.clone().into_ptr()),
                 }
                 true
             }
@@ -278,33 +310,21 @@ impl<'a> Pattern<'a> {
             Self::Ignore(_) => true,
 
             // int patterns bind if the value is equal to the specified int
-            Self::Int(x) => {
-                let x = unwrap!(
-                    x.as_inner().parse::<i64>(),
-                    "interpreter: failed to parse {:?} as i64",
-                    self
-                );
-                matches!(*value.borrow(), Value::Int(y) if x == y)
-            }
+            Self::Int(span) => matches!(value, Value::Int(y) if span.value_i64() == *y),
 
             // tag pattern binds if the value is equal to the specified tag
-            Self::Tag(_, span) => {
-                matches!(*value.borrow(), Value::Tag(tag) if span.as_inner() == tag)
-            }
+            Self::Tag(_, span) => matches!(value, Value::Tag(tag) if span.as_inner() == *tag),
 
             // Bare collects are not allowed
-            Self::Collect(_) => {
-                panic!("interpreter: bare collect patterns are not allowed: {self:?}")
-            }
+            Self::Collect(_) => panic!("interpreter: bare collect patterns are not allowed: {self:?}"),
 
             // May include up to one collect pattern
             Self::Tuple(_, patterns) => {
                 // Ensure that the value is a tuple
-                let value = value.borrow();
-                let values = if let Value::Tuple(ref values) = *value {
+                let values = if let Value::Tuple(values) = value {
                     values
                 } else {
-                    return false;
+                    return false
                 };
 
                 let collect_count = patterns
@@ -321,7 +341,7 @@ impl<'a> Pattern<'a> {
                         patterns
                             .iter()
                             .zip(values.iter())
-                            .map(|(pat, ex)| pat.bind(ex, env))
+                            .map(|(pat, ex)| pat.bind(&ex.borrow(), env))
                             .all(|x| x)
                     } else {
                         false
@@ -337,7 +357,7 @@ impl<'a> Pattern<'a> {
                     let first = patterns[..collect_index]
                         .iter()
                         .zip(values[..collect_index].iter())
-                        .map(|(pat, ex)| pat.bind(ex, env))
+                        .map(|(pat, ex)| pat.bind(&ex.borrow(), env))
                         .all(|x| x);
                     let collect_values_count = (patterns.len() - 1) - values.len();
                     // collect values
@@ -356,7 +376,7 @@ impl<'a> Pattern<'a> {
                     let second = patterns[collect_index + 1..]
                         .iter()
                         .zip(values[collect_index + collect_values_count..].iter())
-                        .map(|(pat, ex)| pat.bind(ex, env))
+                        .map(|(pat, ex)| pat.bind(&ex.borrow(), env))
                         .all(|x| x);
                     first && second
                 }
@@ -378,7 +398,7 @@ mod test {
     macro_rules! evals_to {
         ($s: expr, $v: expr) => {
             if let Ok((_, x)) = expr($s.into()) {
-                assert_eq!(x.eval_new(), $v.into_ptr());
+                assert_eq!(x.eval_new(), $v);
             } else {
                 assert!(false);
             }

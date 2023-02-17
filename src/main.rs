@@ -4,9 +4,10 @@ mod expr;
 mod parse;
 mod span;
 
-use crate::eval::Value;
-use crate::eval::ValuePtr;
-use parse::expr;
+use crate::{
+    eval::{Intrinsics, Value},
+    parse::expr,
+};
 
 fn main() {
     fn input() -> String {
@@ -15,25 +16,18 @@ fn main() {
         s
     }
 
-    fn dec(x: ValuePtr) -> ValuePtr {
-        match *x.borrow() {
-            Value::Int(x) => Value::Int(x - 1).into_ptr(),
-            _ => panic!("TypeError"),
-        }
-    }
-
-    let intrinsics: &[(&str, fn(ValuePtr) -> ValuePtr)] = &[("dec", dec)];
-
     loop {
+        let dec = |x: &Value| Value::Int(x.get_i64() - 1);
+        let inc = |x: &Value| Value::Int(x.get_i64() + 1);
+        let intrinsics: Intrinsics<'_> = vec![("dec", dec), ("inc", inc)];
         let s = input();
         let span = s.as_str().into();
-        let expr = expr(span);
-        match expr {
-            Err(_) => (),
+        match expr(span) {
             Ok((_, e)) => {
-                let value = e.eval_with_intrinsics(intrinsics);
+                let value = e.eval_with_intrinsics(&intrinsics);
                 println!("{value:?}");
             }
+            _ => (),
         }
     }
 }
