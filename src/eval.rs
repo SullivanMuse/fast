@@ -195,26 +195,26 @@ impl<'a> Expr<'a> {
 
     fn free(&self, set: &mut HashSet<&'a str>) {
         match self {
-            Expr::Id(span) => {
+            Self::Id(span) => {
                 set.insert(span.as_inner());
             }
-            Expr::Expand(ellipsis) => {
+            Self::Expand(ellipsis) => {
                 ellipsis.id.map(|id| set.insert(id.as_inner()));
             }
-            Expr::Tuple(_, inner) => inner.iter().for_each(|e| e.free(set)),
-            Expr::App(app) => {
+            Self::Tuple(_, inner) => inner.iter().for_each(|e| e.free(set)),
+            Self::App(app) => {
                 app.inner.free(set);
                 app.args.iter().for_each(|e| e.free(set));
             }
-            Expr::Case(case) => {
+            Self::Case(case) => {
                 case.subject.free(set);
                 for arm in &case.arms {
                     arm.expr.free(set);
                     arm.pattern.remove_bound(set);
                 }
             }
-            Expr::Paren(_, inner) => inner.free(set),
-            Expr::Do(do_struct) => {
+            Self::Paren(_, inner) => inner.free(set),
+            Self::Do(do_struct) => {
                 for statement in &do_struct.statements {
                     match statement {
                         Statement::Expr(e) => e.free(set),
@@ -228,7 +228,7 @@ impl<'a> Expr<'a> {
                     e.free(set)
                 }
             }
-            Expr::Fn(_, param, body) => {
+            Self::Fn(_, param, body) => {
                 body.free(set);
                 set.remove(param.as_inner());
             }
@@ -240,21 +240,21 @@ impl<'a> Expr<'a> {
 impl<'a> Pattern<'a> {
     fn remove_bound(&self, set: &mut HashSet<&'a str>) {
         match self {
-            Pattern::Id(span) => {
+            Self::Id(span) => {
                 set.remove(span.as_inner());
             }
-            Pattern::Collect(ellipsis) => match ellipsis.id {
+            Self::Collect(ellipsis) => match ellipsis.id {
                 None => {}
                 Some(id) => {
                     set.remove(id.as_inner());
                 }
             },
-            Pattern::Tuple(_, inner) => inner.iter().for_each(|p| p.remove_bound(set)),
-            Pattern::App(pattern_app) => {
+            Self::Tuple(_, inner) => inner.iter().for_each(|p| p.remove_bound(set)),
+            Self::App(pattern_app) => {
                 pattern_app.f.remove_bound(set);
                 pattern_app.xs.iter().for_each(|p| p.remove_bound(set));
             }
-            Pattern::Paren(_, inner) => inner.remove_bound(set),
+            Self::Paren(_, inner) => inner.remove_bound(set),
             _ => {}
         }
     }
@@ -262,7 +262,7 @@ impl<'a> Pattern<'a> {
     fn bind(&self, value: &ValuePtr<'a>, env: &mut Env<'a>) -> bool {
         match self {
             // id patterns bind unconditionally to the value
-            Pattern::Id(id) => {
+            Self::Id(id) => {
                 let key = id.as_inner();
                 match env.get(key).map(Clone::clone) {
                     Some(inner) => match inner.replace(Value::Uninit) {
@@ -275,10 +275,10 @@ impl<'a> Pattern<'a> {
             }
 
             // ignore conditions bind unconditionally without modifying the environment
-            Pattern::Ignore(_) => true,
+            Self::Ignore(_) => true,
 
             // int patterns bind if the value is equal to the specified int
-            Pattern::Int(x) => {
+            Self::Int(x) => {
                 let x = unwrap!(
                     x.as_inner().parse::<i64>(),
                     "interpreter: failed to parse {:?} as i64",
@@ -288,17 +288,17 @@ impl<'a> Pattern<'a> {
             }
 
             // tag pattern binds if the value is equal to the specified tag
-            Pattern::Tag(_, span) => {
+            Self::Tag(_, span) => {
                 matches!(*value.borrow(), Value::Tag(tag) if span.as_inner() == tag)
             }
 
             // Bare collects are not allowed
-            Pattern::Collect(_) => {
+            Self::Collect(_) => {
                 panic!("interpreter: bare collect patterns are not allowed: {self:?}")
             }
 
             // May include up to one collect pattern
-            Pattern::Tuple(_, patterns) => {
+            Self::Tuple(_, patterns) => {
                 // Ensure that the value is a tuple
                 let value = value.borrow();
                 let values = if let Value::Tuple(ref values) = *value {
@@ -309,7 +309,7 @@ impl<'a> Pattern<'a> {
 
                 let collect_count = patterns
                     .iter()
-                    .filter(|pat| matches!(pat, Pattern::Collect(_)))
+                    .filter(|pat| matches!(pat, Self::Collect(_)))
                     .count();
                 assert!(
                     collect_count <= 1,
@@ -330,7 +330,7 @@ impl<'a> Pattern<'a> {
                     let collect_index = unwrap!(
                         patterns
                             .iter()
-                            .position(|pat| matches!(pat, Pattern::Collect(_))),
+                            .position(|pat| matches!(pat, Self::Collect(_))),
                         "interpreter: should be a collect pattern here: {:?}",
                         self
                     );
@@ -343,7 +343,7 @@ impl<'a> Pattern<'a> {
                     // collect values
                     let collected =
                         values[collect_index..collect_index + collect_values_count].to_vec();
-                    if let Pattern::Collect(ellipsis) = &patterns[collect_index] {
+                    if let Self::Collect(ellipsis) = &patterns[collect_index] {
                         if let Some(id) = ellipsis.id {
                             env.insert(
                                 id.as_inner().to_string(),
@@ -362,10 +362,10 @@ impl<'a> Pattern<'a> {
                 }
             }
 
-            Pattern::App(_) => todo!(),
+            Self::App(_) => todo!(),
 
             // Obviously we just bind the inner pattern
-            Pattern::Paren(_, inner) => inner.bind(value, env),
+            Self::Paren(_, inner) => inner.bind(value, env),
         }
     }
 }
