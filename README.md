@@ -71,10 +71,11 @@ expr = case | do | etuple | eapp
 
 ## Todo
 
-- Implement case expressions
+- Implement a Hindley-Milner type checker
 
 ## Done
 
+- Implement case expressions
 - Write parser
 - Write tests for parser
 - Need to revamp the environment, so that we can push and pop at appropriate times.

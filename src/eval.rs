@@ -463,7 +463,7 @@ mod test {
     }
 
     #[test]
-    fn test_case() {
+    fn test_case1() {
         evals_to!(
             "{
             x = 5;
@@ -474,5 +474,20 @@ mod test {
         }",
             Value::Int(8)
         );
+    }
+
+    #[test]
+    fn test_case2() {
+        evals_to!("case (2, 3) of (1, y) = y of (x, 3) = x end", Value::Int(2));
+    }
+
+    #[test]
+    fn test_case3() {
+        evals_to!("case :y of :x = 1 of :y = 2 end", Value::Int(2));
+    }
+
+    #[test]
+    fn test_case4() {
+        evals_to!("case (:x, :y) of (:y, :x) = 1 of (:x, :y) = 2 end", Value::Int(2));
     }
 }
