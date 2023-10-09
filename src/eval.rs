@@ -316,7 +316,9 @@ impl<'a> Pattern<'a> {
             Self::Tag(_, span) => matches!(value, Value::Tag(tag) if span.as_inner() == *tag),
 
             // Bare collects are not allowed
-            Self::Collect(_) => panic!("interpreter: bare collect patterns are not allowed: {self:?}"),
+            Self::Collect(_) => {
+                panic!("interpreter: bare collect patterns are not allowed: {self:?}")
+            }
 
             // May include up to one collect pattern
             Self::Tuple(_, patterns) => {
@@ -324,7 +326,7 @@ impl<'a> Pattern<'a> {
                 let values = if let Value::Tuple(values) = value {
                     values
                 } else {
-                    return false
+                    return false;
                 };
 
                 let collect_count = patterns
@@ -488,6 +490,9 @@ mod test {
 
     #[test]
     fn test_case4() {
-        evals_to!("case (:x, :y) of (:y, :x) = 1 of (:x, :y) = 2 end", Value::Int(2));
+        evals_to!(
+            "case (:x, :y) of (:y, :x) = 1 of (:x, :y) = 2 end",
+            Value::Int(2)
+        );
     }
 }

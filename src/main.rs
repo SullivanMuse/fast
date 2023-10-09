@@ -4,9 +4,9 @@ mod expr;
 mod parse;
 mod span;
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
 use std::fs::read_to_string;
 use std::io::Write;
+use std::path::PathBuf;
 
 use crate::{
     eval::{Intrinsics, Value},
