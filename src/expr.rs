@@ -1,5 +1,7 @@
 use crate::span::Span;
 
+use std::cell::Cell;
+
 pub(crate) type Input<'a> = Span<&'a str>;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -54,7 +56,7 @@ pub(crate) struct Do<'a> {
 pub(crate) enum Expr<'a> {
     Int(Input<'a>),
     Tag(Input<'a>, Input<'a>),
-    Id(Input<'a>),
+    Id(Input<'a>, Cell<Option<usize>>),
     Expand(Ellipsis<'a>),
     Tuple(Input<'a>, Vec<Expr<'a>>),
     App(App<'a>),
@@ -74,7 +76,7 @@ pub(crate) struct PatternApp<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Pattern<'a> {
-    Id(Input<'a>),
+    Id(Input<'a>, Cell<Option<usize>>),
     Ignore(Input<'a>),
     Int(Input<'a>),
     Tag(Input<'a>, Input<'a>),

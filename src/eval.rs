@@ -110,7 +110,7 @@ impl<'a> Expr<'a> {
         match self {
             Self::Int(span) => Value::Int(span.value_i64()),
 
-            Self::Id(span) => env[span.as_inner()].borrow().clone(),
+            Self::Id(span, _) => env[span.as_inner()].borrow().clone(),
 
             Self::Tag(_, span) => Value::Tag(span.as_inner()),
 
@@ -225,7 +225,7 @@ impl<'a> Expr<'a> {
 
     fn free(&self, set: &mut HashSet<&'a str>) {
         match self {
-            Self::Id(span) => {
+            Self::Id(span, _) => {
                 set.insert(span.as_inner());
             }
             Self::Expand(ellipsis) => {
@@ -270,7 +270,7 @@ impl<'a> Expr<'a> {
 impl<'a> Pattern<'a> {
     fn remove_bound(&self, set: &mut HashSet<&'a str>) {
         match self {
-            Self::Id(span) => {
+            Self::Id(span, _) => {
                 set.remove(span.as_inner());
             }
             Self::Collect(ellipsis) => match ellipsis.id {
@@ -292,7 +292,7 @@ impl<'a> Pattern<'a> {
     fn bind(&self, value: &Value<'a>, env: &mut Env<'a>) -> bool {
         match self {
             // id patterns bind unconditionally to the value
-            Self::Id(id) => {
+            Self::Id(id, _) => {
                 let key = id.as_inner();
                 match env.get(key).map(Clone::clone) {
                     Some(inner) => match inner.replace(Value::Uninit) {

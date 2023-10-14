@@ -13,6 +13,7 @@ use nom::{
     sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
+use std::cell::Cell;
 
 fn parse_int(s: Input) -> IResult<Input, Input> {
     let (s1, _) = tuple((
@@ -46,7 +47,7 @@ fn etag(s: Input) -> IResult<Input, Expr> {
 }
 
 fn eid(s: Input) -> IResult<Input, Expr> {
-    map(parse_id, Expr::Id)(s)
+    map(parse_id, |s| Expr::Id(s, Cell::new(None)))(s)
 }
 
 fn eatom(s: Input) -> IResult<Input, Expr> {
@@ -245,7 +246,7 @@ fn pint(s: Input) -> IResult<Input, Pattern> {
 }
 
 fn pid(s: Input) -> IResult<Input, Pattern> {
-    map(parse_id, Pattern::Id)(s)
+    map(parse_id, |s| Pattern::Id(s, Cell::new(None)))(s)
 }
 
 fn ptag(s: Input) -> IResult<Input, Pattern> {
@@ -402,7 +403,7 @@ mod test {
     fn test_eid() {
         assert_eq!(
             eid("xyz".into()),
-            Ok((Span::new("xyz", 3, 3), Expr::Id(Span::new("xyz", 0, 3)))),
+            Ok((Span::new("xyz", 3, 3), Expr::Id(Span::new("xyz", 0, 3), Cell::new(None)))),
         );
 
         assert_err!(eid("   xyz".into()));
@@ -433,11 +434,11 @@ mod test {
                     Span::new(s, 4, 5),
                     Box::new(Expr::App(App {
                         span: Span::new(s, 9, s.len()),
-                        inner: Box::new(Expr::Id(Span::new(s, 9, 10))),
+                        inner: Box::new(Expr::Id(Span::new(s, 9, 10), Cell::new(None))),
                         arg_span: Span::new(s, 10, s.len()),
                         args: vec![
-                            Expr::Id(Span::new(s, 11, 12)),
-                            Expr::Id(Span::new(s, 14, 15)),
+                            Expr::Id(Span::new(s, 11, 12), Cell::new(None)),
+                            Expr::Id(Span::new(s, 14, 15), Cell::new(None)),
                         ],
                     })),
                 )),
@@ -458,12 +459,12 @@ mod test {
                     span: Span::from(s),
                     inner: Box::new(Expr::App(App {
                         span: Span::new(s, 0, 7),
-                        inner: Box::new(Expr::Id(Span::new(s, 0, 1))),
+                        inner: Box::new(Expr::Id(Span::new(s, 0, 1), Cell::new(None))),
                         arg_span: Span::new(s, 1, 7),
-                        args: vec![Expr::Id(Span::new(s, 2, 3)), Expr::Id(Span::new(s, 5, 6)),],
+                        args: vec![Expr::Id(Span::new(s, 2, 3), Cell::new(None)), Expr::Id(Span::new(s, 5, 6), Cell::new(None)),],
                     })),
                     arg_span: Span::new(s, 7, 10),
-                    args: vec![Expr::Id(Span::new(s, 8, 9)),],
+                    args: vec![Expr::Id(Span::new(s, 8, 9), Cell::new(None)),],
                 }),
             )),
         );
@@ -485,11 +486,11 @@ mod test {
                 Span::end(s),
                 Expr::Case(Case {
                     span: Span::new(s, 0, 19),
-                    subject: Box::new(Expr::Id(Span::new(s, 5, 6))),
+                    subject: Box::new(Expr::Id(Span::new(s, 5, 6), Cell::new(None))),
                     arms: vec![Arm {
                         span: Span::new(s, 7, 15),
-                        pattern: Pattern::Id(Span::new(s, 10, 11)),
-                        expr: Expr::Id(Span::new(s, 14, 15)),
+                        pattern: Pattern::Id(Span::new(s, 10, 11), Cell::new(None)),
+                        expr: Expr::Id(Span::new(s, 14, 15), Cell::new(None)),
                     },],
                 }),
             )),
@@ -537,12 +538,12 @@ mod test {
         let pat = Pattern::Tuple(
             span,
             vec![
-                Pattern::Id(Span::new(s, 0, 1)),
+                Pattern::Id(Span::new(s, 0, 1), Cell::new(None)),
                 Pattern::Collect(Ellipsis {
                     span: Span::new(s, 3, 5),
                     id: None,
                 }),
-                Pattern::Id(Span::new(s, 7, 8)),
+                Pattern::Id(Span::new(s, 7, 8), Cell::new(None)),
             ],
         );
         assert_eq!(ptuple(span), Ok((Span::end(s), pat)),);
@@ -552,12 +553,12 @@ mod test {
         let pat = Pattern::Tuple(
             span,
             vec![
-                Pattern::Id(Span::new(s, 0, 1)),
+                Pattern::Id(Span::new(s, 0, 1), Cell::new(None)),
                 Pattern::Collect(Ellipsis {
                     span: Span::new(s, 3, 6),
                     id: Some(Span::new(s, 5, 6)),
                 }),
-                Pattern::Id(Span::new(s, 8, 9)),
+                Pattern::Id(Span::new(s, 8, 9), Cell::new(None)),
             ],
         );
         assert_eq!(ptuple(span), Ok((Span::end(s), pat)),);
@@ -586,15 +587,15 @@ mod test {
                     span: Span::from(s),
                     f: Box::new(Pattern::App(PatternApp {
                         span: Span::new(s, 0, 7),
-                        f: Box::new(Pattern::Id(Span::new(s, 0, 1))),
+                        f: Box::new(Pattern::Id(Span::new(s, 0, 1), Cell::new(None))),
                         arg_span: Span::new(s, 1, 7),
                         xs: vec![
-                            Pattern::Id(Span::new(s, 2, 3)),
-                            Pattern::Id(Span::new(s, 5, 6)),
+                            Pattern::Id(Span::new(s, 2, 3), Cell::new(None)),
+                            Pattern::Id(Span::new(s, 5, 6), Cell::new(None)),
                         ],
                     })),
                     arg_span: Span::new(s, 7, 10),
-                    xs: vec![Pattern::Id(Span::new(s, 8, 9)),],
+                    xs: vec![Pattern::Id(Span::new(s, 8, 9), Cell::new(None)),],
                 }),
             )),
         );
