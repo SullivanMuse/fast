@@ -3,6 +3,7 @@ use crate::expr::{
 };
 use crate::span::Span;
 
+use nom::character::complete::multispace1;
 use nom::combinator::consumed;
 use nom::{
     branch::alt,
@@ -24,7 +25,10 @@ fn parse_int(s: Input) -> IResult<Input, Input> {
 }
 
 fn parse_kw(s: Input) -> IResult<Input, ()> {
-    value((), alt((tag("case"), tag("of"), tag("do"), tag("end"))))(s)
+    value(
+        (),
+        alt((tag("case"), tag("of"), tag("do"), tag("end"), tag("use"))),
+    )(s)
 }
 
 fn parse_id(s: Input) -> IResult<Input, Input> {
@@ -177,8 +181,14 @@ fn assign(s: Input) -> IResult<Input, Statement> {
     ))
 }
 
+fn use_stmt(s: Input) -> IResult<Input, Statement> {
+    let (s1, id) = preceded(pair(tag("use"), multispace1), parse_id)(s)?;
+    let span = Span::between(s, s1);
+    Ok((s1, Statement::Use(span, id)))
+}
+
 fn statement(s: Input) -> IResult<Input, Statement> {
-    alt((assign, map(expr, Statement::Expr)))(s)
+    alt((use_stmt, assign, map(expr, Statement::Expr)))(s)
 }
 
 fn edo(s: Input) -> IResult<Input, Expr> {
@@ -598,5 +608,15 @@ mod test {
                 }),
             )),
         );
+    }
+
+    #[test]
+    fn test_statement() {
+        let s = "use xyz";
+        let span = Span::from(s);
+        assert_eq!(
+            statement(span),
+            Ok((Span::end(s), Statement::Use(span, Span::new(s, 4, 7)),))
+        )
     }
 }

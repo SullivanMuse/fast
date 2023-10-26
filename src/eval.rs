@@ -1,8 +1,9 @@
 use crate::{
     env::{Env as Environment, EnvVec},
     expr::{Ellipsis, Expr, Input, Pattern, Statement},
+    load_module::Module,
 };
-use std::{cell::RefCell, collections::HashSet, rc::Rc};
+use std::{cell::RefCell, collections::HashSet, env::current_dir, rc::Rc};
 use unwrap::unwrap;
 
 type Env<'a> = EnvVec<String, ValuePtr<'a>>;
@@ -26,6 +27,7 @@ pub(crate) enum Value<'a> {
     Tuple(Vec<ValuePtr<'a>>),
     Closure(Closure<'a>),
     Intrinsic(Intrinsic<'a>),
+    Module(Module),
 }
 
 impl<'a> std::fmt::Debug for Value<'a> {
@@ -37,6 +39,7 @@ impl<'a> std::fmt::Debug for Value<'a> {
             Value::Tuple(inner) => fmt.debug_tuple("Value::Tuple").field(inner).finish(),
             Value::Closure(closure) => fmt.debug_tuple("Value::Closure").field(closure).finish(),
             Value::Intrinsic(_) => fmt.debug_tuple("Value::Intrinsic").finish(),
+            Value::Module(_) => fmt.debug_tuple("Value::Module").finish(),
         }
     }
 }
@@ -190,6 +193,11 @@ impl<'a> Expr<'a> {
                                 );
                             }
                         }
+                        Statement::Use(_span, module_name) => {
+                            let module_path = current_dir().unwrap();
+                            let value = Value::Module(Module::find(module_name.as_inner(), &module_path, &vec![], &vec![]).unwrap());
+                            env.insert(module_name.as_inner().to_string(), value.into_ptr());
+                        }
                     }
                 }
                 let out = inner
@@ -252,6 +260,7 @@ impl<'a> Expr<'a> {
                             assign.expr.free(set);
                             assign.pattern.remove_bound(set);
                         }
+                        Statement::Use(_, _) => {}
                     }
                 }
                 if let Some(e) = do_struct.ret.as_ref() {

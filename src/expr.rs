@@ -26,6 +26,7 @@ pub(crate) struct Assign<'a> {
 pub(crate) enum Statement<'a> {
     Expr(Expr<'a>),
     Assign(Assign<'a>),
+    Use(Input<'a>, Input<'a>),
 }
 
 #[derive(Clone, Debug, PartialEq)]

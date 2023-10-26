@@ -3,7 +3,7 @@ use libloading::{Library, Symbol};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    ptr::slice_from_raw_parts,
+    ptr::{null, slice_from_raw_parts},
 };
 
 #[repr(C)]
@@ -50,7 +50,8 @@ unsafe fn sentinel_array<T: PartialEq>(data: *const T, sentinel: T) -> &'static 
     panic!("Raw array pointer lacks sentinel, which is undefined behavior.");
 }
 
-struct Module {
+#[derive(Clone, Debug)]
+pub struct Module {
     map: HashMap<String, extern "C" fn(&Value) -> Value>,
 }
 
@@ -70,6 +71,7 @@ impl Module {
             }
             None
         } else if path.ends_with(name) {
+            let _path = path.canonicalize().unwrap();
             let mut module = Module::new();
             let fast_function_table = unsafe {
                 let lib = Library::new(path).ok()?;
