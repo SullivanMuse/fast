@@ -79,7 +79,7 @@ fn expand_list<'a>(exprs: &Vec<Expr<'a>>, env: &mut Env<'a>) -> Vec<ValuePtr<'a>
     for elem in exprs {
         match elem {
             Expr::Expand(Ellipsis { span: _, id }) => {
-                let key: &str = id.expect("Must have value to unpack.").as_inner();
+                let key: &str = id.clone().expect("Must have value to unpack.").as_inner();
                 match *env[key].borrow_mut() {
                     Value::Tuple(ref inner) => xs.extend(inner.iter().cloned()),
                     _ => panic!("Expand expression must evaluate to a tuple."),
@@ -216,7 +216,7 @@ impl<'a> Expr<'a> {
                 }
 
                 let env = RefCell::new(env.clone());
-                let params = vec![*param];
+                let params = vec![param.clone()];
                 let body = (**inner).clone();
                 Value::Closure(Closure { env, params, body })
             }
@@ -229,7 +229,7 @@ impl<'a> Expr<'a> {
                 set.insert(span.as_inner());
             }
             Self::Expand(ellipsis) => {
-                ellipsis.id.map(|id| set.insert(id.as_inner()));
+                ellipsis.id.clone().map(|id| set.insert(id.as_inner()));
             }
             Self::Tuple(_, inner) => inner.iter().for_each(|e| e.free(set)),
             Self::App(app) => {
@@ -273,7 +273,7 @@ impl<'a> Pattern<'a> {
             Self::Id(span, _) => {
                 set.remove(span.as_inner());
             }
-            Self::Collect(ellipsis) => match ellipsis.id {
+            Self::Collect(ellipsis) => match &ellipsis.id {
                 None => {}
                 Some(id) => {
                     set.remove(id.as_inner());
@@ -366,7 +366,7 @@ impl<'a> Pattern<'a> {
                     let collected =
                         values[collect_index..collect_index + collect_values_count].to_vec();
                     if let Self::Collect(ellipsis) = &patterns[collect_index] {
-                        if let Some(id) = ellipsis.id {
+                        if let Some(id) = &ellipsis.id {
                             env.insert(
                                 id.as_inner().to_string(),
                                 Value::Tuple(collected).into_ptr(),

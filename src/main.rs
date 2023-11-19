@@ -1,8 +1,10 @@
+mod context;
 mod env;
 mod eval;
 mod expr;
 mod parse;
 mod span;
+
 use clap::{Parser, Subcommand};
 use std::fs::read_to_string;
 use std::io::Write;

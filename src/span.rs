@@ -2,11 +2,14 @@ use nom::{
     error::{ErrorKind, ParseError},
     Compare, Err, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, Slice,
 };
-use std::ops::{Range, RangeFrom, RangeFull, RangeTo};
+use std::{ops::{Range, RangeFrom, RangeFull, RangeTo}, cell::RefCell, rc::Rc};
 use unwrap::unwrap;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+use crate::context::Context;
+
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Span<T> {
+    context: Rc<RefCell<Context>>,
     inner: T,
     start: usize,
     end: usize,
@@ -41,8 +44,12 @@ where
 }
 
 impl<T> Span<T> {
-    pub(crate) fn new(inner: T, start: usize, end: usize) -> Self {
-        Self { inner, start, end }
+    pub(crate) fn new(context: Rc<RefCell<Context>>, inner: T, start: usize, end: usize) -> Self {
+        Self { context, inner, start, end }
+    }
+
+    pub(crate) fn fresh(inner: T, start: usize, end: usize) -> Self {
+        Self::new(Rc::new(RefCell::new(Context::new())), inner, start, end)
     }
 
     #[allow(dead_code)]
@@ -51,7 +58,7 @@ impl<T> Span<T> {
         T: InputLength,
     {
         let length = inner.input_len();
-        Span::new(inner, length, length)
+        Span::fresh(inner, length, length)
     }
 
     pub(crate) fn as_inner(&self) -> T
@@ -65,14 +72,14 @@ impl<T> Span<T> {
     where
         T: Clone,
     {
-        Span::new(first.inner.clone(), first.start, second.start)
+        Span::new(second.context.clone(), first.inner.clone(), first.start, second.start)
     }
 
     pub(crate) fn to(first: Span<T>, second: Span<T>) -> Self
     where
         T: Clone,
     {
-        Self::new(first.inner.clone(), first.start, second.end)
+        Self::new(second.context.clone(), first.inner.clone(), first.start, second.end)
     }
 }
 
@@ -82,7 +89,8 @@ where
 {
     fn from(inner: T) -> Self {
         let length = inner.input_len();
-        Self::new(inner, 0, length)
+        let context = Rc::new(RefCell::new(Context::new()));
+        Self::new(context, inner, 0, length)
     }
 }
 
@@ -104,7 +112,7 @@ where
     fn slice(&self, range: Range<usize>) -> Self {
         let start = self.start + range.start;
         let end = self.start + range.end;
-        Self::new(self.inner.clone(), start, end)
+        Self::new(self.context.clone(), self.inner.clone(), start, end)
     }
 }
 
@@ -115,7 +123,7 @@ where
     fn slice(&self, range: RangeFrom<usize>) -> Self {
         let start = self.start + range.start;
         let end = self.end;
-        Self::new(self.inner.clone(), start, end)
+        Self::new(self.context.clone(), self.inner.clone(), start, end)
     }
 }
 
@@ -126,7 +134,7 @@ where
     fn slice(&self, range: RangeTo<usize>) -> Self {
         let start = self.start;
         let end = self.start + range.end;
-        Self::new(self.inner.clone(), start, end)
+        Self::new(self.context.clone(), self.inner.clone(), start, end)
     }
 }
 
@@ -286,7 +294,7 @@ mod test {
             tag("hello")(s)
         }
 
-        assert_eq!(hello(span), Ok((Span::new(s, 5, 5), Span::new(s, 0, 5))),);
+        assert_eq!(hello(span), Ok((Span::fresh(s, 5, 5), Span::fresh(s, 0, 5))),);
     }
 
     #[test]
@@ -298,7 +306,7 @@ mod test {
             alpha1(s)
         }
 
-        assert_eq!(id(span), Ok((Span::new(s, 5, 5), Span::new(s, 0, 5))),);
+        assert_eq!(id(span), Ok((Span::fresh(s, 5, 5), Span::fresh(s, 0, 5))),);
     }
 
     #[test]
@@ -310,7 +318,7 @@ mod test {
             alt((tag("thing"), alpha1))(s)
         }
 
-        assert_eq!(parse(span), Ok((Span::new(s, 5, 5), Span::new(s, 0, 5))),);
+        assert_eq!(parse(span), Ok((Span::fresh(s, 5, 5), Span::fresh(s, 0, 5))),);
     }
 
     #[test]
@@ -325,8 +333,8 @@ mod test {
         assert_eq!(
             parse(span),
             Ok((
-                Span::new(s, 10, 10),
-                (Span::new(s, 0, 5), Span::new(s, 5, 10)),
+                Span::fresh(s, 10, 10),
+                (Span::fresh(s, 0, 5), Span::fresh(s, 5, 10)),
             )),
         );
     }
