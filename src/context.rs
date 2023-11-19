@@ -6,11 +6,14 @@ use nom::{
     character::complete::{alpha1, alphanumeric1, digit1, space0},
     combinator::recognize,
     multi::many0,
-    sequence::{delimited, pair, tuple},
+    sequence::{delimited, pair, tuple}, IResult,
 };
 use string_interner::{symbol::SymbolU32, StringInterner};
+use trace::trace;
 
 use crate::cst::{Do, Expr, ExprTy, Statement, StatementTy};
+
+trace::init_depth_var!();
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Loc {
@@ -24,13 +27,21 @@ impl Loc {
         Self { source, start, end }
     }
 
-    pub fn split(&self, s: &str) -> (Self, Self) {
-        let first = Loc::new(self.source, self.start, self.start + s.len());
-        let second = Loc::new(self.source, self.start + s.len(), self.end);
-        (first, second)
+    pub fn token(&self, rem: &str) -> Self {
+        let source = self.source;
+        let start = self.start;
+        let end = self.start + rem.len();
+        Self { source, start, end }
+    }
+    
+    pub fn remaining(&self, rem: &str) -> Self {
+        let source = self.source;
+        let start = self.start + rem.len();
+        let end = self.end;
+        Self { source, start, end }
     }
 
-    pub fn to(&self, other: &Self) -> Self {
+    pub fn to(&self, other: Self) -> Self {
         assert_eq!(
             self.source, other.source,
             "Attempt to compare Locs with different sources"
@@ -67,8 +78,6 @@ pub struct Context {
 
 pub type Symbol = SymbolU32;
 
-type PResult<T> = Result<(Loc, T), ()>;
-
 struct ContextSource<'a>(&'a Context, SourceIx, usize);
 
 impl<'a> std::fmt::Debug for ContextSource<'a> {
@@ -76,6 +85,15 @@ impl<'a> std::fmt::Debug for ContextSource<'a> {
         self.0.debug_source(self.1, f, self.2)
     }
 }
+
+fn convert<T, E>(res: IResult<&str, T, E>, loc: Loc) -> IResult<Loc, T, ()> {
+    match res {
+        IResult::Ok((s, x)) => Ok((loc.remaining(s), x)),
+        IResult::Err(e) => Err(nom::Err::Error(())),
+    }
+}
+
+type PResult<T> = IResult<Loc, T, ()>;
 
 impl Context {
     pub fn new() -> Self {
@@ -212,6 +230,7 @@ impl Context {
         }
     }
 
+    #[trace]
     pub fn repl(&mut self) -> SourceIx {
         let mut string = String::new();
         std::io::stdin()
@@ -220,18 +239,21 @@ impl Context {
         self.insert_source(string)
     }
 
+    #[trace]
     pub fn store(&mut self, location: Loc) -> Symbol {
         let string = self.location(location);
         // TODO: Find a way to eliminate the extra allocation
         self.store.get_or_intern(string.to_string())
     }
 
+    #[trace]
     fn insert_expr(&mut self, expr: Expr) -> ExprIx {
         let ix = ExprIx(self.exprs.len());
         self.exprs.push(expr);
         ix
     }
 
+    #[trace]
     fn insert_statement(&mut self, statement: Statement) -> StatementIx {
         let ix = StatementIx(self.statements.len());
         self.statements.push(statement);
@@ -240,65 +262,58 @@ impl Context {
 
     /// id '=' expr
     /// TODO: test
+    #[trace]
     fn assign(&mut self, loc: Loc) -> PResult<StatementIx> {
         let (rest, (loc, sym)) = self.id_inner(loc)?;
         let (rest, _) =
-            tuple((space0, tag("="), space0::<&str, ()>))(self.location(rest)).map_err(|_| ())?;
-        let (rest, _) = loc.split(rest);
+            convert(tuple((space0, tag("="), space0::<&str, ()>))(self.location(rest)), loc)?;
         let (rest, expr) = self.expr(rest)?;
-        let loc = loc.to(&rest);
-        Ok((
-            rest,
-            self.insert_statement(Statement::new(loc, StatementTy::Assign(sym, expr))),
-        ))
+        let statement = Statement::new(loc.to(rest), StatementTy::Assign(sym, expr));
+        Ok((rest, self.insert_statement(statement)))
     }
 
     /// statement = assign | expr
     /// TODO: test
+    #[trace]
     fn statement(&mut self, loc: Loc) -> PResult<StatementIx> {
         if let Ok(res) = self.assign(loc) {
             Ok(res)
         } else {
             let (rest, expr) = self.expr(loc)?;
-            let loc = loc.to(&rest);
-            Ok((
-                rest,
-                self.insert_statement(Statement::new(loc, StatementTy::Expr(expr))),
-            ))
+            let statement = Statement::new(loc.to(rest), StatementTy::Expr(expr));
+            Ok((rest, self.insert_statement(statement)))
         }
     }
 
     /// statements = (statement ';')* statement?
     /// TODO: test
+    #[trace]
     pub fn statements(&mut self, loc: Loc) -> PResult<(Vec<StatementIx>, Option<StatementIx>)> {
         let mut rest = loc;
         let mut statements = vec![];
         let mut ret = None;
         while let Ok((rest1, statement)) = self.statement(rest) {
             if let Ok((rest1, _)) =
-                tuple((space0::<&str, ()>, tag(";"), space0))(self.location(rest1))
+                convert(tuple((space0::<&str, ()>, tag(";"), space0))(self.location(rest1)), loc)
             {
                 statements.push(statement);
-                (rest, _) = loc.split(rest1);
+                rest = rest1;
             } else {
                 ret = Some(statement);
                 rest = rest1;
                 break;
             }
         }
-        let loc = loc.to(&rest);
         Ok((rest, (statements, ret)))
     }
 
     /// do = '{' statements '}'
     /// TODO: test
+    #[trace]
     fn do_expr(&mut self, loc: Loc) -> PResult<ExprIx> {
-        let (rest, _) = pair(tag("{"), space0::<&str, ()>)(self.location(loc)).map_err(|_| ())?;
-        let (rest, _) = loc.split(rest);
+        let (rest, _) = convert(pair(tag("{"), space0::<&str, ()>)(self.location(loc)), loc)?;
         let (rest, (statements, ret)) = self.statements(rest)?;
-        let (rest, _) =
-            pair(space0, tag("}"))(self.location(rest)).map_err(|_: nom::Err<()>| ())?;
-        let (rest, loc) = loc.split(rest);
+        let (rest, _) = convert(pair(space0::<&str, ()>, tag("}"))(self.location(rest)), loc)?;
         Ok((
             rest,
             self.insert_expr(Expr::new(loc, ExprTy::Do(Do::new(statements, ret)))),
@@ -307,6 +322,7 @@ impl Context {
 
     /// unit = '()'
     /// TODO: test
+    #[trace]
     fn unit(&mut self, loc: Loc) -> PResult<ExprIx> {
         let s = self.location(loc);
         let (s1, inner) =
@@ -317,6 +333,7 @@ impl Context {
 
     /// int = (digit1 '_')* digit1
     /// TODO: test
+    #[trace]
     fn int(&mut self, loc: Loc) -> PResult<ExprIx> {
         let s = self.location(loc);
         let (s1, inner) = recognize(tuple((
@@ -328,6 +345,7 @@ impl Context {
         Ok((rest, self.insert_expr(Expr::new(loc, ExprTy::Int))))
     }
 
+    #[trace]
     fn id_inner(&mut self, loc: Loc) -> PResult<(Loc, Symbol)> {
         let s = self.location(loc);
         let (s1, id) = recognize(tuple((
@@ -335,13 +353,14 @@ impl Context {
             many0(alt((tag("_"), alphanumeric1))),
         )))(s)
         .map_err(|_| ())?;
-        let (loc, rest) = loc.split(id);
+        let (loc, rest) = loc.split(s1);
         let sym = self.store(loc);
         Ok((rest, (loc, sym)))
     }
 
     /// id = alpha ('_' | alnum1)*
     /// TODO: test
+    #[trace]
     fn id(&mut self, loc: Loc) -> PResult<ExprIx> {
         let (rest, (loc, sym)) = self.id_inner(loc)?;
         Ok((rest, self.insert_expr(Expr::new(loc, ExprTy::Id(sym)))))
@@ -349,6 +368,7 @@ impl Context {
 
     /// quote = ':' atomic
     /// TODO: test
+    #[trace]
     fn quote(&mut self, loc: Loc) -> PResult<ExprIx> {
         let (rest, _) = pair(tag(":"), space0::<&str, ()>)(self.location(loc)).map_err(|_| ())?;
         let (rest, _) = loc.split(rest);
@@ -361,6 +381,7 @@ impl Context {
 
     /// eval = '$' atomic
     /// TODO: test
+    #[trace]
     fn eval(&mut self, loc: Loc) -> PResult<ExprIx> {
         let (rest, _) = pair(tag("$"), space0::<&str, ()>)(self.location(loc)).map_err(|_| ())?;
         let (rest, _) = loc.split(rest);
@@ -373,6 +394,7 @@ impl Context {
 
     /// atomic = unit | int | id | quote | eval | do | paren
     /// TODO: test
+    #[trace]
     fn atomic(&mut self, loc: Loc) -> PResult<ExprIx> {
         self.unit(loc)
             .or_else(|_| self.int(loc))
@@ -385,6 +407,7 @@ impl Context {
 
     /// call = atomic+
     /// TODO: test
+    #[trace]
     fn call(&mut self, loc: Loc) -> PResult<ExprIx> {
         let (mut rest, f) = self.atomic(loc)?;
         let mut xs = vec![];
@@ -405,6 +428,7 @@ impl Context {
 
     /// expr = fn | call | atomic
     /// TODO: test
+    #[trace]
     fn expr(&mut self, loc: Loc) -> PResult<ExprIx> {
         self.fn_expr(loc)
             .or_else(|_| self.call(loc))
@@ -413,6 +437,7 @@ impl Context {
 
     /// fn = id '->' expr
     /// TODO: test
+    #[trace]
     fn fn_expr(&mut self, loc: Loc) -> PResult<ExprIx> {
         let (rest, (_, sym)) = self.id_inner(loc)?;
         let (rest, _) =
@@ -427,6 +452,7 @@ impl Context {
 
     /// paren = '(' expr ')'
     /// TODO: test
+    #[trace]
     fn paren(&mut self, loc: Loc) -> PResult<ExprIx> {
         let (rest, _) = pair(tag("("), space0::<&str, ()>)(self.location(loc)).map_err(|_| ())?;
         let (rest, expr) = self.expr(loc.split(rest).0)?;
