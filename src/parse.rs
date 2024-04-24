@@ -497,6 +497,28 @@ mod test {
     }
 
     #[test]
+    fn test_etuple() {
+        let s = "(1, 2, 3)";
+        assert_eq!(
+            expr(Span::from(s)),
+            Ok((
+                Span::end(s),
+                Expr::Paren(
+                    Span::from(s),
+                    Box::new(Expr::Tuple(
+                        Span::new(s, 1, 8),
+                        vec![
+                            Expr::Int(Span::new(s, 1, 2)),
+                            Expr::Int(Span::new(s, 4, 5)),
+                            Expr::Int(Span::new(s, 7, 8)),
+                        ]
+                    )),
+                ),
+            )),
+        );
+    }
+
+    #[test]
     fn test_pint() {
         let s = "1234";
         let span = Span::from(s);
