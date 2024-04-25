@@ -93,7 +93,8 @@ fn expand_list<'a>(exprs: &Vec<Expr<'a>>, env: &mut Env<'a>) -> Vec<ValuePtr<'a>
 }
 
 impl<'a> Expr<'a> {
-    pub(crate) fn eval_new(&'a self) -> Value<'a> {
+    #[cfg(test)]
+    fn eval_new(&'a self) -> Value<'a> {
         let mut env = Env::new();
         self.eval(&mut env)
     }
