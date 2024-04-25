@@ -1,68 +1,45 @@
-use crate::expr::{
-    App, Arm, Assign, Case, Do, Ellipsis, Expr, Input, Pattern, PatternApp, Statement,
-};
+use crate::expr::{App, Arm, Assign, Case, Do, Expr, Input, Statement};
+use crate::parse_common::{parse_ellipsis, parse_id, parse_int, parse_tag};
+use crate::parse_pattern::pattern;
 use crate::span::Span;
 
 use nom::combinator::consumed;
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    character::complete::{alpha1, alphanumeric1, digit1, multispace0},
-    combinator::{cut, map, not, opt, value},
-    multi::{many0, many1, separated_list0},
+    character::complete::multispace0,
+    combinator::{map, opt},
+    multi::{many0, many1},
     sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
 
-fn parse_int(s: Input) -> IResult<Input, Input> {
-    let (s1, _) = tuple((
-        digit1,
-        many0(pair(tag("_"), digit1)),
-        cut(not(pair(multispace0, tag("_")))),
-    ))(s)?;
-    Ok((s1, Span::between(s, s1)))
-}
-
-fn parse_kw(s: Input) -> IResult<Input, ()> {
-    value((), alt((tag("case"), tag("of"), tag("do"), tag("end"))))(s)
-}
-
-fn parse_id(s: Input) -> IResult<Input, Input> {
-    let (s1, _) = tuple((not(parse_kw), alpha1, many0(pair(tag("_"), alphanumeric1))))(s)?;
-    Ok((s1, Span::between(s, s1)))
-}
-
-fn parse_tag(s: Input) -> IResult<Input, (Input, Input)> {
-    let (s1, span) = preceded(pair(tag(":"), multispace0), parse_id)(s)?;
-    Ok((s1, (Span::between(s, s1), span)))
-}
-
+/// parse an int expression
 fn eint(s: Input) -> IResult<Input, Expr> {
     map(parse_int, Expr::Int)(s)
 }
 
+/// parse a tag expression
 fn etag(s: Input) -> IResult<Input, Expr> {
     map(parse_tag, |(span1, span2)| Expr::Tag(span1, span2))(s)
 }
 
+/// parse an id
 fn eid(s: Input) -> IResult<Input, Expr> {
     map(parse_id, Expr::Id)(s)
 }
 
+/// parse an atomic expression
 fn eatom(s: Input) -> IResult<Input, Expr> {
     alt((eunit, eid, etag, eint, eparen))(s)
 }
 
-fn parse_ellipsis(s: Input) -> IResult<Input, Ellipsis> {
-    let (s1, id) = preceded(tag(".."), preceded(multispace0, opt(parse_id)))(s)?;
-    let span = Span::between(s, s1);
-    Ok((s1, Ellipsis { span, id }))
-}
-
+/// parse a list item
 fn eitem(s: Input) -> IResult<Input, Expr> {
     alt((map(parse_ellipsis, Expr::Expand), eother))(s)
 }
 
+/// parse an application expression
 fn eapp(s: Input) -> IResult<Input, Expr> {
     /// '(' ws (eitem ws ',' ws)* eitem? ws ')'
     fn args(s: Input) -> IResult<Input, (Input, Vec<Expr>)> {
@@ -103,12 +80,14 @@ fn eapp(s: Input) -> IResult<Input, Expr> {
     Ok((s1, f))
 }
 
+/// parse a unit expression
 /// eunit = '(' ')'
 fn eunit(s: Input) -> IResult<Input, Expr> {
     let (s1, _) = tuple((tag("("), multispace0, tag(")")))(s)?;
     Ok((s1, Expr::Tuple(Span::between(s, s1), vec![])))
 }
 
+/// parse a tuple expression
 /// etuple = (eitem ',')+ eitem?
 fn etuple(s: Input) -> IResult<Input, Expr> {
     let (s1, (mut xs, x)) = pair(
@@ -125,6 +104,8 @@ fn etuple(s: Input) -> IResult<Input, Expr> {
     Ok((s1, Expr::Tuple(span, xs)))
 }
 
+/// parse an arm of a case expression
+/// arm = 'of' pattern '=' expr
 fn arm(s: Input) -> IResult<Input, Arm> {
     let (s1, (pattern, expr)) = pair(
         preceded(terminated(tag("of"), multispace0), pattern),
@@ -141,6 +122,8 @@ fn arm(s: Input) -> IResult<Input, Arm> {
     ))
 }
 
+/// parse a case expression
+/// case = 'case' expr arm* 'end'
 fn ecase(s: Input) -> IResult<Input, Expr> {
     let (s1, (subject, arms)) = pair(
         preceded(pair(tag("case"), multispace0), expr),
@@ -161,6 +144,8 @@ fn ecase(s: Input) -> IResult<Input, Expr> {
     ))
 }
 
+/// parse an assignment statement
+/// assign = pattern '=' expr
 fn assign(s: Input) -> IResult<Input, Statement> {
     let (s1, (pattern, expr)) = pair(
         pattern,
@@ -177,10 +162,14 @@ fn assign(s: Input) -> IResult<Input, Statement> {
     ))
 }
 
+/// parse a statement
+/// statement = assign | expr
 fn statement(s: Input) -> IResult<Input, Statement> {
     alt((assign, map(expr, Statement::Expr)))(s)
 }
 
+/// parse a do expression
+/// do = '{' statement[;] expr '}'
 fn edo(s: Input) -> IResult<Input, Expr> {
     let (s1, (statements, ret)) = delimited(
         pair(tag("{"), multispace0),
@@ -204,6 +193,8 @@ fn edo(s: Input) -> IResult<Input, Expr> {
     ))
 }
 
+/// parse a paren expression
+/// paren = '(' expr ')'
 fn eparen(s: Input) -> IResult<Input, Expr> {
     let (s1, inner) = delimited(
         pair(tag("("), multispace0),
@@ -215,6 +206,7 @@ fn eparen(s: Input) -> IResult<Input, Expr> {
     Ok((s1, expr))
 }
 
+/// parse an anonymous function
 /// fn = param fn | param ws '->' ws expr
 fn efn(s: Input) -> IResult<Input, Expr> {
     map(
@@ -236,111 +228,16 @@ fn eother(s: Input) -> IResult<Input, Expr> {
     alt((eapp, ecase, edo))(s)
 }
 
+/// parse an expression
+/// expr = fn | tuple | app | case | do
 pub(crate) fn expr(s: Input) -> IResult<Input, Expr> {
     alt((efn, etuple, eother))(s)
-}
-
-fn pint(s: Input) -> IResult<Input, Pattern> {
-    map(parse_int, Pattern::Int)(s)
-}
-
-fn pid(s: Input) -> IResult<Input, Pattern> {
-    map(parse_id, Pattern::Id)(s)
-}
-
-fn ptag(s: Input) -> IResult<Input, Pattern> {
-    map(parse_tag, |(span1, span2)| Pattern::Tag(span1, span2))(s)
-}
-
-fn pignore(s: Input) -> IResult<Input, Pattern> {
-    let (s1, _) = pair(tag("_"), opt(parse_id))(s)?;
-    let span = Span::between(s, s1);
-    let pat = Pattern::Ignore(span);
-    Ok((s1, pat))
-}
-
-fn punit(s: Input) -> IResult<Input, Pattern> {
-    let (s1, _) = tuple((tag("("), multispace0, tag(")")))(s)?;
-    let span = Span::between(s, s1);
-    let pat = Pattern::Tuple(span, vec![]);
-    Ok((s1, pat))
-}
-
-fn pparen(s: Input) -> IResult<Input, Pattern> {
-    let (s1, inner) = delimited(
-        pair(tag("("), multispace0),
-        pattern,
-        pair(multispace0, tag(")")),
-    )(s)?;
-    let span = Span::between(s, s1);
-    let pat = Pattern::Paren(span, Box::new(inner));
-    Ok((s1, pat))
-}
-
-fn patom(s: Input) -> IResult<Input, Pattern> {
-    alt((pint, pid, ptag, pignore, punit, pparen))(s)
-}
-
-fn pitem(s: Input) -> IResult<Input, Pattern> {
-    alt((map(parse_ellipsis, Pattern::Collect), pother))(s)
-}
-
-fn ptuple(s: Input) -> IResult<Input, Pattern> {
-    let (s1, xs) = map(
-        pair(
-            many1(terminated(
-                pitem,
-                tuple((multispace0, tag(","), multispace0)),
-            )),
-            opt(pitem),
-        ),
-        |(mut xs, x)| {
-            if let Some(x) = x {
-                xs.push(x);
-            }
-            xs
-        },
-    )(s)?;
-    let span = Span::between(s, s1);
-    let pat = Pattern::Tuple(span, xs);
-    Ok((s1, pat))
-}
-
-fn papp(s: Input) -> IResult<Input, Pattern> {
-    fn args(s: Input) -> IResult<Input, (Input, Vec<Pattern>)> {
-        let (s1, xs) = delimited(
-            pair(tag("("), multispace0),
-            separated_list0(tuple((multispace0, tag(","), multispace0)), pitem),
-            pair(multispace0, tag(")")),
-        )(s)?;
-        let span = Span::between(s, s1);
-        Ok((s1, (span, xs)))
-    }
-    let (s1, (mut f, xs)) = pair(patom, many0(args))(s)?;
-    for (arg_span, args) in xs {
-        let span = Span::to(s, arg_span);
-        let inner = Box::new(f);
-        f = Pattern::App(PatternApp {
-            span,
-            f: inner,
-            arg_span,
-            xs: args,
-        });
-    }
-    Ok((s1, f))
-}
-
-fn pother(s: Input) -> IResult<Input, Pattern> {
-    alt((papp,))(s)
-}
-
-fn pattern(s: Input) -> IResult<Input, Pattern> {
-    alt((ptuple, pother))(s)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::expr::Pattern;
 
     macro_rules! assert_err {
         ($e: expr) => {
@@ -514,110 +411,6 @@ mod test {
                         ]
                     )),
                 ),
-            )),
-        );
-    }
-
-    #[test]
-    fn test_pint() {
-        let s = "1234";
-        let span = Span::from(s);
-        let pat = Pattern::Int(span);
-        assert_eq!(pint(span), Ok((Span::end(s), pat)),);
-    }
-
-    #[test]
-    fn test_ptag() {
-        let s = ": xyz";
-        let span = Span::from(s);
-        let pat = Pattern::Tag(span, Span::new(s, 2, 5));
-        assert_eq!(ptag(span), Ok((Span::end(s), pat)),);
-    }
-
-    #[test]
-    fn test_pignore() {
-        let s = "_xyz";
-        let span = Span::from(s);
-        let pat = Pattern::Ignore(span);
-        assert_eq!(pignore(span), Ok((Span::end(s), pat)),);
-    }
-
-    #[test]
-    fn test_punit() {
-        let s = "(   )";
-        let span = Span::from(s);
-        let pat = Pattern::Tuple(span, vec![]);
-        assert_eq!(punit(span), Ok((Span::end(s), pat)),);
-
-        assert_err!(punit(Span::from("   ()")));
-    }
-
-    #[test]
-    fn test_ptuple() {
-        let s = "x, .., y";
-        let span = Span::from(s);
-        let pat = Pattern::Tuple(
-            span,
-            vec![
-                Pattern::Id(Span::new(s, 0, 1)),
-                Pattern::Collect(Ellipsis {
-                    span: Span::new(s, 3, 5),
-                    id: None,
-                }),
-                Pattern::Id(Span::new(s, 7, 8)),
-            ],
-        );
-        assert_eq!(ptuple(span), Ok((Span::end(s), pat)),);
-
-        let s = "x, ..y, z";
-        let span = Span::from(s);
-        let pat = Pattern::Tuple(
-            span,
-            vec![
-                Pattern::Id(Span::new(s, 0, 1)),
-                Pattern::Collect(Ellipsis {
-                    span: Span::new(s, 3, 6),
-                    id: Some(Span::new(s, 5, 6)),
-                }),
-                Pattern::Id(Span::new(s, 8, 9)),
-            ],
-        );
-        assert_eq!(ptuple(span), Ok((Span::end(s), pat)),);
-    }
-
-    #[test]
-    fn test_pparen() {
-        let s = "(())";
-        let span = Span::from(s);
-        let pat = Pattern::Paren(
-            Span::from(s),
-            Box::new(Pattern::Tuple(Span::new(s, 1, 3), vec![])),
-        );
-        assert_eq!(pparen(span), Ok((Span::end(s), pat)),);
-    }
-
-    #[test]
-    fn test_papp() {
-        let s = "f(x, y)(z)";
-        let span = Span::from(s);
-        assert_eq!(
-            papp(span),
-            Ok((
-                Span::end(s),
-                Pattern::App(PatternApp {
-                    span: Span::from(s),
-                    f: Box::new(Pattern::App(PatternApp {
-                        span: Span::new(s, 0, 7),
-                        f: Box::new(Pattern::Id(Span::new(s, 0, 1))),
-                        arg_span: Span::new(s, 1, 7),
-                        xs: vec![
-                            Pattern::Id(Span::new(s, 2, 3)),
-                            Pattern::Id(Span::new(s, 5, 6)),
-                        ],
-                    })),
-                    arg_span: Span::new(s, 7, 10),
-                    xs: vec![Pattern::Id(Span::new(s, 8, 9)),],
-                }),
             )),
         );
     }

@@ -1,7 +1,9 @@
 mod env;
 mod eval;
 mod expr;
-mod parse;
+mod parse_common;
+mod parse_expr;
+mod parse_pattern;
 mod span;
 use clap::{Parser, Subcommand};
 use std::fs::read_to_string;
@@ -10,7 +12,7 @@ use std::path::PathBuf;
 
 use crate::{
     eval::{Intrinsics, Value},
-    parse::expr,
+    parse_expr::expr,
 };
 
 fn repl() {
